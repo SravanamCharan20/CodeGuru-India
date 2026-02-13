@@ -205,7 +205,7 @@ CodeGuru India is an AI-powered code learning platform designed to help Indian d
 **NFR-2: Scalability**
 - THE System SHALL support concurrent usage by up to 100 users without performance degradation
 - THE System SHALL handle file uploads up to 10MB without timeout
-- THE System SHALL process repositories up to 100MB within 30 seconds
+- THE System SHALL process repositories up to 50MB within 30 seconds
 
 **NFR-3: Availability**
 - THE System SHALL maintain 99% uptime during business hours (9 AM - 9 PM IST)
@@ -250,3 +250,4 @@ CodeGuru India is an AI-powered code learning platform designed to help Indian d
 - THE System SHALL use Streamlit for UI implementation
 - THE System SHALL use LangChain for LLM orchestration and chaining
 - THE System SHALL use Python 3.9 or higher as the primary programming language
+- No external database dependencies (use Streamlit session state only)
