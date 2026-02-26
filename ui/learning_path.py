@@ -20,19 +20,33 @@ def render_learning_path():
     # Get available paths from manager
     available_paths = path_manager.get_available_paths()
     
-    # Create path options
+    # Create path options with icons
+    path_icons = {
+        "DSA Fundamentals": "🧮",
+        "Backend Development": "⚙️",
+        "Frontend Development": "🎨",
+        "Full-Stack Development": "🚀",
+        "AWS Services": "☁️"
+    }
+    
     path_options = {path.name: path for path in available_paths}
     
     selected_path_name = st.selectbox(
         "Select a Learning Path",
         options=list(path_options.keys()),
-        format_func=lambda x: f"{path_options[x].icon} {x}"
+        format_func=lambda x: f"{path_icons.get(x, '📚')} {x}"
     )
     
     selected_path = path_options[selected_path_name]
     
+    # Get or initialize progress for this path
+    if "learning_progress" not in st.session_state:
+        st.session_state.learning_progress = {}
+    
+    path_progress = st.session_state.learning_progress.get(selected_path.id, {})
+    
     # Calculate progress
-    completed_topics = sum(1 for topic in selected_path.topics if topic.completed)
+    completed_topics = sum(1 for topic_id in path_progress.values() if topic_id)
     total_topics = len(selected_path.topics)
     progress = completed_topics / total_topics if total_topics > 0 else 0
     
@@ -62,13 +76,30 @@ def _render_roadmap(learning_path, path_manager, progress_tracker):
     """Render learning roadmap visualization."""
     st.markdown("### 🗺️ Learning Roadmap")
     
+    # Get progress for this path
+    if "learning_progress" not in st.session_state:
+        st.session_state.learning_progress = {}
+    
+    path_progress = st.session_state.learning_progress.get(learning_path.id, {})
+    
     # Display topics from the learning path
     for topic in learning_path.topics:
+        # Determine status based on progress
+        is_completed = path_progress.get(topic.id, False)
+        
+        # Check if prerequisites are met
+        prereqs_met = True
+        if topic.prerequisites:
+            for prereq_id in topic.prerequisites:
+                if not path_progress.get(prereq_id, False):
+                    prereqs_met = False
+                    break
+        
         # Determine status
-        if topic.completed:
+        if is_completed:
             status = "completed"
             status_icon = "✅"
-        elif topic.unlocked:
+        elif prereqs_met:
             status = "available"
             status_icon = "📖"
         else:
@@ -81,12 +112,25 @@ def _render_roadmap(learning_path, path_manager, progress_tracker):
             st.markdown(f"**{status_icon} {topic.name}**")
             st.caption(topic.description)
             if topic.prerequisites:
-                st.caption(f"Prerequisites: {', '.join(topic.prerequisites)}")
+                # Get prerequisite names
+                prereq_names = []
+                for prereq_id in topic.prerequisites:
+                    for t in learning_path.topics:
+                        if t.id == prereq_id:
+                            prereq_names.append(t.name)
+                            break
+                if prereq_names:
+                    st.caption(f"Prerequisites: {', '.join(prereq_names)}")
         
         with col2:
             if status == "available":
                 if st.button("Start", key=f"start_{topic.id}", use_container_width=True):
-                    # Mark topic as started
+                    # Mark topic as completed (simplified - in real app would track actual completion)
+                    if learning_path.id not in st.session_state.learning_progress:
+                        st.session_state.learning_progress[learning_path.id] = {}
+                    st.session_state.learning_progress[learning_path.id][topic.id] = True
+                    
+                    # Record activity
                     if progress_tracker:
                         progress_tracker.record_activity("topic_started", {
                             "path": learning_path.name,
@@ -95,6 +139,7 @@ def _render_roadmap(learning_path, path_manager, progress_tracker):
                     
                     st.success(f"Starting {topic.name}...")
                     st.info("💡 Complete quizzes and flashcards to mark this topic as complete!")
+                    st.rerun()
             
             elif status == "completed":
                 if st.button("Review", key=f"review_{topic.id}", use_container_width=True):
