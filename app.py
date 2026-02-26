@@ -68,11 +68,15 @@ def initialize_backend_services():
             from engines.quiz_engine import QuizEngine
             from generators.diagram_generator import DiagramGenerator
             from learning.path_manager import LearningPathManager
+            from learning.progress_tracker import ProgressTracker
+            from learning.flashcard_manager import FlashcardManager
             
             explanation_engine = ExplanationEngine(orchestrator)
             quiz_engine = QuizEngine(orchestrator)
             diagram_generator = DiagramGenerator()
             path_manager = LearningPathManager()
+            progress_tracker = ProgressTracker(st.session_state.session_manager)
+            flashcard_manager = FlashcardManager(st.session_state.session_manager)
             
             # Store in session state
             st.session_state.bedrock_client = bedrock_client
@@ -83,6 +87,8 @@ def initialize_backend_services():
             st.session_state.quiz_engine = quiz_engine
             st.session_state.diagram_generator = diagram_generator
             st.session_state.path_manager = path_manager
+            st.session_state.progress_tracker = progress_tracker
+            st.session_state.flashcard_manager = flashcard_manager
             st.session_state.backend_initialized = True
             
         except Exception as e:

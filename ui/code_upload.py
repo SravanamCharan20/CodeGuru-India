@@ -87,6 +87,7 @@ def render_code_upload():
             options=["Beginner", "Intermediate", "Advanced"],
             value="Intermediate"
         )
+        generate_flashcards = st.checkbox("🗂️ Generate Flashcards", value=True)
     
     # Analyze button
     st.divider()
@@ -109,7 +110,20 @@ def render_code_upload():
                         
                         # Store analysis in session
                         st.session_state.current_analysis = analysis
-                        st.success("✅ Analysis complete! View results in the Explanations tab.")
+                        
+                        # Generate flashcards if requested
+                        if generate_flashcards and "flashcard_manager" in st.session_state:
+                            flashcards = st.session_state.flashcard_manager.generate_flashcards(
+                                code_analysis=analysis,
+                                language=language
+                            )
+                            if flashcards:
+                                st.success(f"✅ Analysis complete! Generated {len(flashcards)} flashcards.")
+                            else:
+                                st.success("✅ Analysis complete! View results in the Explanations tab.")
+                        else:
+                            st.success("✅ Analysis complete! View results in the Explanations tab.")
+                        
                     except Exception as e:
                         st.error(f"❌ Analysis failed: {str(e)}")
                         st.info("💡 Showing mock data instead. Configure AWS credentials for real analysis.")

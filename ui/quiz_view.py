@@ -44,11 +44,31 @@ def _render_quiz_selection():
                 st.caption(f"❓ {info['questions']} Qs")
             with col4:
                 if st.button("Start", key=f"start_{topic}", use_container_width=True):
-                    st.session_state.quiz_started = True
-                    st.session_state.current_topic = topic
-                    st.session_state.total_questions = info['questions']
-                    st.session_state.quiz_time_limit = info['time']
-                    st.rerun()
+                    # Generate quiz using QuizEngine
+                    if "quiz_engine" in st.session_state:
+                        with st.spinner("Generating quiz..."):
+                            try:
+                                language = st.session_state.session_manager.get_language_preference()
+                                quiz = st.session_state.quiz_engine.generate_quiz(
+                                    topic=topic,
+                                    difficulty=info['difficulty'],
+                                    num_questions=info['questions'],
+                                    language=language
+                                )
+                                st.session_state.current_quiz = quiz
+                                st.session_state.quiz_started = True
+                                st.session_state.current_question = 0
+                                st.session_state.quiz_answers = {}
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error generating quiz: {str(e)}")
+                    else:
+                        # Fallback to mock quiz
+                        st.session_state.quiz_started = True
+                        st.session_state.current_topic = topic
+                        st.session_state.total_questions = info['questions']
+                        st.session_state.quiz_time_limit = info['time']
+                        st.rerun()
             
             st.divider()
 

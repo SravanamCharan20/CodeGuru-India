@@ -6,61 +6,96 @@ def render_progress_dashboard():
     """Render progress tracking dashboard."""
     st.title("📊 Your Learning Progress")
     
-    # Key metrics
+    # Get progress tracker
+    progress_tracker = st.session_state.get("progress_tracker", None)
+    
+    if progress_tracker:
+        # Get real statistics
+        stats = progress_tracker.get_statistics()
+        
+        # Key metrics
+        st.markdown("### 📈 Overview")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Topics Completed",
+                stats.topics_completed,
+                delta="+3 this week" if stats.topics_completed > 0 else None,
+                delta_color="normal"
+            )
+        
+        with col2:
+            st.metric(
+                "Avg Quiz Score",
+                f"{int(stats.average_quiz_score)}%",
+                delta="+5%" if stats.average_quiz_score > 0 else None,
+                delta_color="normal"
+            )
+        
+        with col3:
+            st.metric(
+                "Learning Streak",
+                f"{stats.current_streak} days",
+                delta="+1" if stats.current_streak > 0 else None,
+                delta_color="normal"
+            )
+        
+        with col4:
+            st.metric(
+                "Time Spent",
+                f"{stats.total_time_minutes // 60} hrs",
+                delta=f"+{stats.total_time_minutes % 60} min",
+                delta_color="normal"
+            )
+        
+        st.divider()
+        
+        # Progress visualizations
+        _render_progress_charts()
+        
+        st.divider()
+        
+        # Skill levels
+        _render_skill_levels(stats.skill_levels)
+        
+        st.divider()
+        
+        # Weekly summary
+        _render_weekly_summary(progress_tracker)
+        
+        st.divider()
+        
+        # Achievement badges
+        _render_achievements()
+    else:
+        # Fallback to mock data
+        _render_mock_dashboard()
+
+
+def _render_mock_dashboard():
+    """Render dashboard with mock data."""
     st.markdown("### 📈 Overview")
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric(
-            "Topics Completed",
-            "24",
-            delta="+3 this week",
-            delta_color="normal"
-        )
-    
+        st.metric("Topics Completed", "24", delta="+3 this week", delta_color="normal")
     with col2:
-        st.metric(
-            "Avg Quiz Score",
-            "78%",
-            delta="+5%",
-            delta_color="normal"
-        )
-    
+        st.metric("Avg Quiz Score", "78%", delta="+5%", delta_color="normal")
     with col3:
-        st.metric(
-            "Learning Streak",
-            "12 days",
-            delta="+1",
-            delta_color="normal"
-        )
-    
+        st.metric("Learning Streak", "12 days", delta="+1", delta_color="normal")
     with col4:
-        st.metric(
-            "Time Spent",
-            "45 hrs",
-            delta="+8 hrs",
-            delta_color="normal"
-        )
+        st.metric("Time Spent", "45 hrs", delta="+8 hrs", delta_color="normal")
     
     st.divider()
-    
-    # Progress visualizations
     _render_progress_charts()
-    
     st.divider()
-    
-    # Skill levels
-    _render_skill_levels()
-    
+    _render_skill_levels({})
     st.divider()
-    
-    # Weekly summary
-    _render_weekly_summary()
-    
+    _render_weekly_summary(None)
     st.divider()
-    
-    # Achievement badges
     _render_achievements()
 
 
@@ -94,18 +129,23 @@ def _render_progress_charts():
         st.caption("📝 Quiz scores over the last 30 days")
 
 
-def _render_skill_levels():
+def _render_skill_levels(skill_levels: dict = None):
     """Render skill level progress bars."""
     st.markdown("### 🎯 Skill Levels")
     
-    skills = {
-        "React": 75,
-        "JavaScript": 85,
-        "Node.js": 60,
-        "AWS Services": 45,
-        "Data Structures": 70,
-        "Python": 80
-    }
+    if skill_levels and len(skill_levels) > 0:
+        # Use real skill levels
+        skills = skill_levels
+    else:
+        # Use mock data
+        skills = {
+            "React": 75,
+            "JavaScript": 85,
+            "Node.js": 60,
+            "AWS Services": 45,
+            "Data Structures": 70,
+            "Python": 80
+        }
     
     col1, col2 = st.columns(2)
     
@@ -128,29 +168,53 @@ def _get_skill_label(level):
         return "🏆 Expert"
 
 
-def _render_weekly_summary():
+def _render_weekly_summary(progress_tracker=None):
     """Render weekly summary."""
     st.markdown("### 📅 This Week's Summary")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### Activities Completed")
-        activities = [
-            "✅ Completed 'React Hooks' topic",
-            "✅ Scored 85% on JavaScript quiz",
-            "✅ Reviewed 15 flashcards",
-            "✅ Started 'Node.js APIs' learning path"
-        ]
-        for activity in activities:
-            st.markdown(activity)
-    
-    with col2:
-        st.markdown("#### Learning Stats")
-        st.info("⏱️ **8 hours** of learning time")
-        st.info("📚 **3 topics** completed")
-        st.info("📝 **2 quizzes** taken")
-        st.info("🗂️ **15 flashcards** reviewed")
+    if progress_tracker:
+        # Get real weekly summary
+        summary = progress_tracker.get_weekly_summary()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Activities Completed")
+            if summary.topics_learned:
+                for topic in summary.topics_learned[:5]:  # Show first 5
+                    st.markdown(f"✅ Completed '{topic}' topic")
+            else:
+                st.info("No activities this week yet. Start learning!")
+        
+        with col2:
+            st.markdown("#### Learning Stats")
+            st.info(f"⏱️ **{summary.time_spent_minutes // 60} hours {summary.time_spent_minutes % 60} min** of learning time")
+            st.info(f"📚 **{len(summary.topics_learned)} topics** completed")
+            st.info(f"📝 **{len(summary.quiz_scores)} quizzes** taken")
+            if summary.quiz_scores:
+                avg_score = sum(summary.quiz_scores) / len(summary.quiz_scores)
+                st.info(f"🎯 **{int(avg_score)}% average** quiz score")
+    else:
+        # Mock data
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Activities Completed")
+            activities = [
+                "✅ Completed 'React Hooks' topic",
+                "✅ Scored 85% on JavaScript quiz",
+                "✅ Reviewed 15 flashcards",
+                "✅ Started 'Node.js APIs' learning path"
+            ]
+            for activity in activities:
+                st.markdown(activity)
+        
+        with col2:
+            st.markdown("#### Learning Stats")
+            st.info("⏱️ **8 hours** of learning time")
+            st.info("📚 **3 topics** completed")
+            st.info("📝 **2 quizzes** taken")
+            st.info("🗂️ **15 flashcards** reviewed")
 
 
 def _render_achievements():

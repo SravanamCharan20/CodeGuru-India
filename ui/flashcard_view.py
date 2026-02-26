@@ -12,12 +12,19 @@ def render_flashcard_view():
     if "card_flipped" not in st.session_state:
         st.session_state.card_flipped = False
     
+    # Get flashcard manager
+    flashcard_manager = st.session_state.get("flashcard_manager")
+    
+    if not flashcard_manager:
+        st.warning("⚠️ Flashcard manager not initialized. Please restart the app.")
+        return
+    
     # Filters
     col1, col2 = st.columns(2)
     with col1:
         topic_filter = st.selectbox(
             "📚 Topic",
-            ["All Topics", "React", "JavaScript", "Node.js", "AWS", "Data Structures"]
+            ["All Topics", "Functions", "Classes", "Patterns", "React", "JavaScript", "Node.js", "AWS", "Data Structures"]
         )
     with col2:
         difficulty_filter = st.selectbox(
@@ -27,11 +34,22 @@ def render_flashcard_view():
     
     st.divider()
     
-    # Get mock flashcards
-    flashcards = _get_mock_flashcards()
+    # Get flashcards from manager
+    topic = None if topic_filter == "All Topics" else topic_filter
+    flashcards = flashcard_manager.get_flashcards_for_review(topic=topic)
+    
+    # If no flashcards from manager, use mock data
+    if not flashcards:
+        flashcards = _get_mock_flashcards()
     
     if flashcards:
         current_idx = st.session_state.current_card
+        
+        # Ensure current_card is within bounds
+        if current_idx >= len(flashcards):
+            st.session_state.current_card = 0
+            current_idx = 0
+        
         total_cards = len(flashcards)
         
         # Card counter
@@ -62,7 +80,8 @@ def render_flashcard_view():
             rating = st.select_slider(
                 "Difficulty",
                 options=["Easy 😊", "Medium 😐", "Hard 😓"],
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                key=f"rating_{card.id if hasattr(card, 'id') else current_idx}"
             )
         
         with col3:
@@ -78,17 +97,74 @@ def render_flashcard_view():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✅ Mark Reviewed", use_container_width=True):
-                st.success("Card marked as reviewed!")
+                # Map rating to difficulty
+                difficulty_map = {
+                    "Easy 😊": "easy",
+                    "Medium 😐": "medium",
+                    "Hard 😓": "hard"
+                }
+                difficulty = difficulty_map.get(rating, "medium")
+                
+                # Mark as reviewed if it's a real flashcard
+                if hasattr(card, 'id'):
+                    flashcard_manager.mark_reviewed(card.id, difficulty)
+                    st.success("Card marked as reviewed!")
+                    
+                    # Record activity in progress tracker
+                    progress_tracker = st.session_state.get("progress_tracker")
+                    if progress_tracker:
+                        progress_tracker.record_activity("flashcard_reviewed", {
+                            "card_id": card.id,
+                            "difficulty": difficulty
+                        })
+                else:
+                    st.success("Card marked as reviewed!")
+        
         with col2:
             if st.button("🏆 Mark as Mastered", use_container_width=True):
-                st.success("Card mastered! It will appear less frequently.")
+                # Mark as mastered if it's a real flashcard
+                if hasattr(card, 'id'):
+                    flashcard_manager.mark_mastered(card.id)
+                    st.success("Card mastered! It will appear less frequently.")
+                    
+                    # Record activity in progress tracker
+                    progress_tracker = st.session_state.get("progress_tracker")
+                    if progress_tracker:
+                        progress_tracker.record_activity("flashcard_mastered", {
+                            "card_id": card.id
+                        })
+                    
+                    # Move to next card
+                    if current_idx < total_cards - 1:
+                        st.session_state.current_card += 1
+                    st.session_state.card_flipped = False
+                    st.rerun()
+                else:
+                    st.success("Card mastered! It will appear less frequently.")
     else:
         st.info("No flashcards available. Generate flashcards from code analysis!")
+        
+        # Show button to navigate to code upload
+        if st.button("📤 Upload Code to Generate Flashcards", type="primary"):
+            st.session_state.current_page = "Upload Code"
+            st.rerun()
 
 
 def _render_flashcard(card):
     """Render a single flashcard with flip functionality."""
     is_flipped = st.session_state.card_flipped
+    
+    # Get card data (handle both Flashcard objects and dicts)
+    if hasattr(card, 'front'):
+        front = card.front
+        back = card.back
+        topic = card.topic
+        difficulty = card.difficulty
+    else:
+        front = card.get('front', '')
+        back = card.get('back', '')
+        topic = card.get('topic', '')
+        difficulty = card.get('difficulty', '')
     
     # Card container with styling
     card_container = st.container()
@@ -110,7 +186,7 @@ def _render_flashcard(card):
                     box-shadow: 0 10px 30px rgba(0,0,0,0.2);
                 ">
                     <h2 style="color: white; font-size: 28px; margin: 0;">
-                        {card['front']}
+                        {front}
                     </h2>
                 </div>
                 """,
@@ -135,7 +211,7 @@ def _render_flashcard(card):
                     <div style="color: white;">
                         <h3 style="margin-top: 0;">Answer:</h3>
                         <p style="font-size: 18px; line-height: 1.6;">
-                            {card['back']}
+                            {back}
                         </p>
                     </div>
                 </div>
@@ -148,7 +224,7 @@ def _render_flashcard(card):
                 st.rerun()
         
         # Card metadata
-        st.caption(f"📚 Topic: {card['topic']} | 📊 Difficulty: {card['difficulty']}")
+        st.caption(f"📚 Topic: {topic} | 📊 Difficulty: {difficulty}")
 
 
 def _get_mock_flashcards():
