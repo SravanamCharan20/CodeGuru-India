@@ -61,6 +61,9 @@ def initialize_backend_services():
             prompt_manager = PromptManager()
             orchestrator = LangChainOrchestrator(bedrock_client, prompt_manager)
             
+            from ai.voice_processor import VoiceProcessor
+            voice_processor = VoiceProcessor(aws_config)
+            
             # Initialize analyzers and engines
             code_analyzer = CodeAnalyzer(orchestrator)
             
@@ -84,6 +87,7 @@ def initialize_backend_services():
             st.session_state.bedrock_client = bedrock_client
             st.session_state.prompt_manager = prompt_manager
             st.session_state.orchestrator = orchestrator
+            st.session_state.voice_processor = voice_processor
             st.session_state.code_analyzer = code_analyzer
             st.session_state.explanation_engine = explanation_engine
             st.session_state.quiz_engine = quiz_engine

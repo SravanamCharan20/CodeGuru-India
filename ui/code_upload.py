@@ -65,12 +65,80 @@ def render_code_upload():
         st.markdown("### Ask Questions with Voice")
         st.caption("Speak in English, Hindi, or Telugu")
         
+        # Initialize voice query state
+        if "voice_query" not in st.session_state:
+            st.session_state.voice_query = ""
+        
+        # Voice processor
+        voice_processor = st.session_state.get("voice_processor")
+        
+        if voice_processor:
+            # Show supported languages
+            languages = voice_processor.get_supported_languages()
+            st.info(f"🗣️ Supported: {', '.join(languages.values())}")
+        
         col1, col2 = st.columns([1, 3])
+        
         with col1:
+            # Voice recording button (placeholder - requires audio recording library)
             if st.button("🎤 Start Recording", use_container_width=True):
-                st.info("🎙️ Voice recording will be available soon!")
+                st.info("🎙️ Voice recording requires audio input. Use the text box below for now!")
+                st.caption("💡 To enable voice: Install streamlit-audio-recorder")
+        
         with col2:
-            st.text_input("Or type your question here", placeholder="What does this function do?")
+            # Text input as alternative
+            voice_query = st.text_area(
+                "Or type your question here",
+                placeholder="What does this function do?\nExplain the authentication logic\nHow does this code work?",
+                height=100,
+                key="voice_query_input"
+            )
+            
+            if voice_query:
+                st.session_state.voice_query = voice_query
+        
+        # Process voice query button
+        if st.session_state.voice_query:
+            if st.button("🚀 Process Query", type="primary", use_container_width=True):
+                with st.spinner("🔍 Processing your query..."):
+                    query = st.session_state.voice_query
+                    
+                    # Get uploaded code
+                    code = session_manager.get_uploaded_code()
+                    
+                    if code and "explanation_engine" in st.session_state:
+                        try:
+                            language = session_manager.get_language_preference()
+                            
+                            # Generate explanation based on query
+                            explanation = st.session_state.explanation_engine.explain_code(
+                                code=code,
+                                language=language,
+                                difficulty="intermediate"
+                            )
+                            
+                            # Store in session
+                            st.session_state.voice_query_result = {
+                                "query": query,
+                                "explanation": explanation
+                            }
+                            
+                            st.success("✅ Query processed! View results below.")
+                            
+                            # Display result
+                            with st.expander("📝 Answer", expanded=True):
+                                st.markdown(f"**Your Question:** {query}")
+                                st.divider()
+                                st.markdown(explanation)
+                        
+                        except Exception as e:
+                            st.error(f"❌ Failed to process query: {str(e)}")
+                    
+                    elif not code:
+                        st.warning("⚠️ Please upload code first to ask questions about it!")
+                    
+                    else:
+                        st.info("💡 Explanation engine not available. Configure AWS credentials for AI-powered answers.")
     
     # Analysis options
     st.divider()

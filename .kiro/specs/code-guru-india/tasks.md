@@ -311,7 +311,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
     - **Validates: Requirements 10.1, 10.2, 10.3, 10.4**
 
 - [ ] 20. Voice processor implementation
-  - [ ] 20.1 Create ai/voice_processor.py with VoiceProcessor class
+  - [x] 20.1 Create ai/voice_processor.py with VoiceProcessor class
     - Implement process_audio() method using AWS Transcribe
     - Implement detect_language() for language detection
     - Implement handle_accent() for regional accent support
@@ -333,7 +333,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
     - _Requirements: 2.4_
 
 - [ ] 21. Integrate voice input with upload UI
-  - [ ] 21.1 Wire VoiceProcessor to code upload interface
+  - [x] 21.1 Wire VoiceProcessor to code upload interface
     - Replace voice button placeholder with audio recording
     - Display transcription for user confirmation
     - Process voice query through ExplanationEngine
@@ -393,7 +393,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
     - **Validates: Requirements 13.2**
 
 - [ ] 24. Integrate learning paths with UI
-  - [ ] 24.1 Wire LearningPathManager to learning path UI
+  - [x] 24.1 Wire LearningPathManager to learning path UI
     - Replace mock data with real learning paths
     - Implement topic unlocking logic
     - Display real progress tracking

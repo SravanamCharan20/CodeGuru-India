@@ -6,154 +6,123 @@ def render_learning_path():
     """Render learning path interface."""
     st.title("🛤️ Learning Paths")
     
+    # Get path manager and progress tracker
+    path_manager = st.session_state.get("path_manager")
+    progress_tracker = st.session_state.get("progress_tracker")
+    
+    if not path_manager:
+        st.warning("⚠️ Learning path manager not initialized. Please restart the app.")
+        return
+    
     # Path selection
     st.markdown("### Choose Your Learning Journey")
     
-    paths = {
-        "DSA Fundamentals": {
-            "icon": "🧮",
-            "description": "Master Data Structures and Algorithms",
-            "topics": 12,
-            "hours": 40,
-            "progress": 0.35
-        },
-        "Backend Development": {
-            "icon": "⚙️",
-            "description": "Build robust server-side applications",
-            "topics": 15,
-            "hours": 50,
-            "progress": 0.20
-        },
-        "Frontend Development": {
-            "icon": "🎨",
-            "description": "Create beautiful user interfaces",
-            "topics": 18,
-            "hours": 45,
-            "progress": 0.50
-        },
-        "Full-Stack Development": {
-            "icon": "🚀",
-            "description": "Complete web development mastery",
-            "topics": 25,
-            "hours": 80,
-            "progress": 0.15
-        },
-        "AWS Services": {
-            "icon": "☁️",
-            "description": "Cloud computing with Amazon Web Services",
-            "topics": 20,
-            "hours": 60,
-            "progress": 0.10
-        }
-    }
+    # Get available paths from manager
+    available_paths = path_manager.get_available_paths()
     
-    selected_path = st.selectbox(
+    # Create path options
+    path_options = {path.name: path for path in available_paths}
+    
+    selected_path_name = st.selectbox(
         "Select a Learning Path",
-        options=list(paths.keys()),
-        format_func=lambda x: f"{paths[x]['icon']} {x}"
+        options=list(path_options.keys()),
+        format_func=lambda x: f"{path_options[x].icon} {x}"
     )
     
-    # Display path details
-    path_info = paths[selected_path]
+    selected_path = path_options[selected_path_name]
     
+    # Calculate progress
+    completed_topics = sum(1 for topic in selected_path.topics if topic.completed)
+    total_topics = len(selected_path.topics)
+    progress = completed_topics / total_topics if total_topics > 0 else 0
+    
+    # Display path details
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("📚 Topics", path_info["topics"])
+        st.metric("📚 Topics", total_topics)
     with col2:
-        st.metric("⏱️ Est. Hours", path_info["hours"])
+        st.metric("⏱️ Est. Hours", selected_path.estimated_hours)
     with col3:
-        st.metric("✅ Progress", f"{int(path_info['progress'] * 100)}%")
+        st.metric("✅ Progress", f"{int(progress * 100)}%")
     
-    st.progress(path_info["progress"], text=f"{int(path_info['progress'] * 100)}% Complete")
+    st.progress(progress, text=f"{int(progress * 100)}% Complete")
     
     st.divider()
     
     # Render roadmap
-    _render_roadmap(selected_path)
+    _render_roadmap(selected_path, path_manager, progress_tracker)
     
     st.divider()
     
     # Milestone achievements
-    _render_milestones()
+    _render_milestones(progress)
 
 
-def _render_roadmap(path_name: str):
+def _render_roadmap(learning_path, path_manager, progress_tracker):
     """Render learning roadmap visualization."""
     st.markdown("### 🗺️ Learning Roadmap")
     
-    # Mock topics based on path
-    if path_name == "DSA Fundamentals":
-        topics = [
-            {"name": "Arrays & Strings", "status": "completed", "prereq": []},
-            {"name": "Linked Lists", "status": "completed", "prereq": ["Arrays & Strings"]},
-            {"name": "Stacks & Queues", "status": "available", "prereq": ["Linked Lists"]},
-            {"name": "Trees & Graphs", "status": "locked", "prereq": ["Stacks & Queues"]},
-            {"name": "Dynamic Programming", "status": "locked", "prereq": ["Trees & Graphs"]},
-        ]
-    elif path_name == "Frontend Development":
-        topics = [
-            {"name": "HTML & CSS Basics", "status": "completed", "prereq": []},
-            {"name": "JavaScript Fundamentals", "status": "completed", "prereq": ["HTML & CSS Basics"]},
-            {"name": "React Basics", "status": "completed", "prereq": ["JavaScript Fundamentals"]},
-            {"name": "State Management", "status": "available", "prereq": ["React Basics"]},
-            {"name": "React Hooks", "status": "available", "prereq": ["React Basics"]},
-            {"name": "Next.js", "status": "locked", "prereq": ["State Management", "React Hooks"]},
-        ]
-    else:
-        topics = [
-            {"name": "Introduction", "status": "completed", "prereq": []},
-            {"name": "Core Concepts", "status": "available", "prereq": ["Introduction"]},
-            {"name": "Advanced Topics", "status": "locked", "prereq": ["Core Concepts"]},
-        ]
-    
-    # Display topics as cards
-    for topic in topics:
-        status_icons = {
-            "completed": "✅",
-            "available": "📖",
-            "locked": "🔒"
-        }
-        
-        status_colors = {
-            "completed": "success",
-            "available": "info",
-            "locked": "secondary"
-        }
+    # Display topics from the learning path
+    for topic in learning_path.topics:
+        # Determine status
+        if topic.completed:
+            status = "completed"
+            status_icon = "✅"
+        elif topic.unlocked:
+            status = "available"
+            status_icon = "📖"
+        else:
+            status = "locked"
+            status_icon = "🔒"
         
         col1, col2 = st.columns([4, 1])
         
         with col1:
-            st.markdown(f"**{status_icons[topic['status']]} {topic['name']}**")
-            if topic['prereq']:
-                st.caption(f"Prerequisites: {', '.join(topic['prereq'])}")
+            st.markdown(f"**{status_icon} {topic.name}**")
+            st.caption(topic.description)
+            if topic.prerequisites:
+                st.caption(f"Prerequisites: {', '.join(topic.prerequisites)}")
         
         with col2:
-            if topic['status'] == "available":
-                if st.button("Start", key=f"start_{topic['name']}", use_container_width=True):
-                    st.success(f"Starting {topic['name']}...")
-            elif topic['status'] == "completed":
-                st.button("Review", key=f"review_{topic['name']}", use_container_width=True)
+            if status == "available":
+                if st.button("Start", key=f"start_{topic.id}", use_container_width=True):
+                    # Mark topic as started
+                    if progress_tracker:
+                        progress_tracker.record_activity("topic_started", {
+                            "path": learning_path.name,
+                            "topic": topic.name
+                        })
+                    
+                    st.success(f"Starting {topic.name}...")
+                    st.info("💡 Complete quizzes and flashcards to mark this topic as complete!")
+            
+            elif status == "completed":
+                if st.button("Review", key=f"review_{topic.id}", use_container_width=True):
+                    st.info(f"Reviewing {topic.name}...")
+            
             else:
-                st.button("Locked", key=f"locked_{topic['name']}", disabled=True, use_container_width=True)
+                st.button("Locked", key=f"locked_{topic.id}", disabled=True, use_container_width=True)
         
         st.divider()
 
 
-def _render_milestones():
+def _render_milestones(progress):
     """Render milestone achievements."""
     st.markdown("### 🏆 Milestone Achievements")
     
+    # Calculate milestones based on progress
     milestones = [
-        {"name": "First Steps", "description": "Complete your first topic", "achieved": True},
-        {"name": "Quick Learner", "description": "Complete 5 topics", "achieved": True},
-        {"name": "Dedicated Student", "description": "Complete 10 topics", "achieved": False},
-        {"name": "Path Master", "description": "Complete entire learning path", "achieved": False},
+        {"name": "First Steps", "description": "Complete your first topic", "threshold": 0.05},
+        {"name": "Quick Learner", "description": "Complete 25% of topics", "threshold": 0.25},
+        {"name": "Dedicated Student", "description": "Complete 50% of topics", "threshold": 0.50},
+        {"name": "Path Master", "description": "Complete entire learning path", "threshold": 1.0},
     ]
     
     cols = st.columns(4)
     for i, milestone in enumerate(milestones):
         with cols[i]:
-            if milestone["achieved"]:
+            achieved = progress >= milestone["threshold"]
+            if achieved:
                 st.success(f"🏅 {milestone['name']}")
             else:
                 st.info(f"⭕ {milestone['name']}")
