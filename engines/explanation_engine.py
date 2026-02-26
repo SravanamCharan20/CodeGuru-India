@@ -31,6 +31,167 @@ class ExplanationEngine:
     def __init__(self, langchain_orchestrator: LangChainOrchestrator):
         """Initialize with LangChain orchestrator."""
         self.orchestrator = langchain_orchestrator
+        self.framework_patterns = self._initialize_framework_patterns()
+    
+    def _initialize_framework_patterns(self) -> dict:
+        """Initialize framework detection patterns and insights."""
+        return {
+            "react": {
+                "patterns": ["useState", "useEffect", "useContext", "React.Component", "jsx", "tsx"],
+                "insights": [
+                    "React uses a component-based architecture - like building with LEGO blocks",
+                    "State management in React is like keeping track of items in a shopping cart",
+                    "React hooks are like special tools that give components superpowers",
+                    "Virtual DOM is like having a draft copy before making final changes"
+                ],
+                "best_practices": [
+                    "Keep components small and focused (Single Responsibility)",
+                    "Use functional components with hooks for modern React",
+                    "Avoid prop drilling - use Context API or state management",
+                    "Memoize expensive computations with useMemo"
+                ],
+                "indian_context": "Think of React components like different counters at a railway station - each handles specific tasks independently"
+            },
+            "nodejs": {
+                "patterns": ["require(", "express", "app.listen", "module.exports", "async/await"],
+                "insights": [
+                    "Node.js is event-driven - like a restaurant taking multiple orders simultaneously",
+                    "Non-blocking I/O means Node doesn't wait - like a chai wallah serving multiple customers",
+                    "Express.js routes are like different windows at a government office",
+                    "Middleware functions are like security checkpoints at an airport"
+                ],
+                "best_practices": [
+                    "Use async/await for cleaner asynchronous code",
+                    "Implement proper error handling middleware",
+                    "Use environment variables for configuration",
+                    "Follow REST API conventions for endpoints"
+                ],
+                "indian_context": "Node.js event loop is like a traffic signal managing multiple lanes efficiently"
+            },
+            "express": {
+                "patterns": ["app.get(", "app.post(", "req.body", "res.json(", "middleware"],
+                "insights": [
+                    "Express middleware is like a chain of security checks at an event",
+                    "Routes define endpoints - like different departments in an office",
+                    "Request/Response cycle is like ordering and receiving food at a restaurant",
+                    "Error handling middleware catches issues - like a safety net"
+                ],
+                "best_practices": [
+                    "Use router for organizing routes",
+                    "Implement input validation middleware",
+                    "Use helmet for security headers",
+                    "Structure code with MVC pattern"
+                ],
+                "indian_context": "Express routes are like different counters at a post office - each serves a specific purpose"
+            },
+            "mongodb": {
+                "patterns": ["mongoose", "Schema", "Model", "find(", "aggregate(", "ObjectId"],
+                "insights": [
+                    "MongoDB stores documents - like files in folders, not tables",
+                    "Collections are like different sections in a library",
+                    "Schemas define structure - like forms at a bank",
+                    "Aggregation pipeline is like a factory assembly line processing data"
+                ],
+                "best_practices": [
+                    "Index frequently queried fields",
+                    "Use aggregation for complex queries",
+                    "Implement proper schema validation",
+                    "Avoid deeply nested documents"
+                ],
+                "indian_context": "MongoDB collections are like different registers at a school - students, teachers, classes"
+            },
+            "aws": {
+                "patterns": ["boto3", "lambda", "s3", "dynamodb", "ec2", "aws-sdk"],
+                "insights": [
+                    "AWS Lambda is serverless - like renting a taxi only when needed",
+                    "S3 buckets store files - like a digital locker system",
+                    "DynamoDB is NoSQL - like a flexible filing system",
+                    "EC2 instances are virtual servers - like renting office space"
+                ],
+                "best_practices": [
+                    "Use IAM roles for secure access",
+                    "Implement proper error handling and retries",
+                    "Monitor costs with CloudWatch",
+                    "Use environment variables for configuration"
+                ],
+                "indian_context": "AWS services are like different government departments - each specialized for specific tasks"
+            },
+            "python": {
+                "patterns": ["def ", "class ", "import ", "__init__", "self."],
+                "insights": [
+                    "Python is readable - code should be like a well-written story",
+                    "List comprehensions are concise - like shorthand notation",
+                    "Decorators add functionality - like gift wrapping",
+                    "Generators are memory-efficient - like streaming vs downloading"
+                ],
+                "best_practices": [
+                    "Follow PEP 8 style guidelines",
+                    "Use virtual environments for dependencies",
+                    "Write docstrings for functions and classes",
+                    "Use type hints for better code clarity"
+                ],
+                "indian_context": "Python's simplicity is like Hindi - easy to learn, powerful to use"
+            },
+            "javascript": {
+                "patterns": ["function", "const", "let", "=>", "Promise", "async"],
+                "insights": [
+                    "JavaScript is single-threaded but asynchronous - like a chef multitasking",
+                    "Promises handle async operations - like getting a token at a bank",
+                    "Closures preserve scope - like keeping secrets in a diary",
+                    "Event loop manages execution - like a traffic controller"
+                ],
+                "best_practices": [
+                    "Use const/let instead of var",
+                    "Prefer async/await over callbacks",
+                    "Use strict equality (===)",
+                    "Handle errors in promises"
+                ],
+                "indian_context": "JavaScript callbacks are like getting a callback from customer service - you don't wait on hold"
+            }
+        }
+    
+    def detect_frameworks(self, code: str) -> List[str]:
+        """
+        Detect frameworks and technologies used in code.
+        
+        Args:
+            code: Code to analyze
+            
+        Returns:
+            List of detected frameworks
+        """
+        detected = []
+        code_lower = code.lower()
+        
+        for framework, config in self.framework_patterns.items():
+            for pattern in config["patterns"]:
+                if pattern.lower() in code_lower:
+                    detected.append(framework)
+                    break
+        
+        return detected
+    
+    def get_framework_insights(self, frameworks: List[str]) -> dict:
+        """
+        Get insights for detected frameworks.
+        
+        Args:
+            frameworks: List of framework names
+            
+        Returns:
+            Dictionary of insights by framework
+        """
+        insights = {}
+        
+        for framework in frameworks:
+            if framework in self.framework_patterns:
+                insights[framework] = {
+                    "insights": self.framework_patterns[framework]["insights"],
+                    "best_practices": self.framework_patterns[framework]["best_practices"],
+                    "indian_context": self.framework_patterns[framework]["indian_context"]
+                }
+        
+        return insights
     
     def explain_code(
         self,
@@ -52,6 +213,17 @@ class ExplanationEngine:
             Complete explanation
         """
         try:
+            # Detect frameworks
+            frameworks = self.detect_frameworks(code)
+            framework_insights = self.get_framework_insights(frameworks)
+            
+            # Build enhanced context with framework insights
+            enhanced_context = context
+            if framework_insights:
+                enhanced_context += "\n\nDetected Technologies: " + ", ".join(frameworks)
+                for fw, insights in framework_insights.items():
+                    enhanced_context += f"\n\n{fw.upper()} Context: {insights['indian_context']}"
+            
             # Generate main explanation
             explanation_text = self.orchestrator.explain_code(
                 code=code,
@@ -59,8 +231,20 @@ class ExplanationEngine:
                 difficulty=difficulty
             )
             
+            # Add framework-specific insights to explanation
+            if framework_insights:
+                explanation_text += "\n\n### Framework-Specific Insights:\n"
+                for fw, insights in framework_insights.items():
+                    explanation_text += f"\n**{fw.upper()}:**\n"
+                    explanation_text += f"- {insights['insights'][0]}\n"
+                    if insights['best_practices']:
+                        explanation_text += f"- Best Practice: {insights['best_practices'][0]}\n"
+            
             # Extract key concepts (simplified)
             key_concepts = self._extract_key_concepts(code)
+            
+            # Add detected frameworks to key concepts
+            key_concepts.extend([fw.upper() for fw in frameworks])
             
             # Generate analogy
             if key_concepts:
@@ -68,15 +252,20 @@ class ExplanationEngine:
             else:
                 analogy = "No specific analogy generated"
             
+            # Add framework-specific analogies
+            analogies = [analogy]
+            for fw, insights in framework_insights.items():
+                analogies.append(insights['indian_context'])
+            
             # Create examples (simplified)
             examples = self._generate_examples(code)
             
             return Explanation(
                 summary=explanation_text[:200] + "..." if len(explanation_text) > 200 else explanation_text,
                 detailed_explanation=explanation_text,
-                analogies=[analogy],
+                analogies=analogies[:3],  # Limit to 3 analogies
                 examples=examples,
-                key_concepts=key_concepts
+                key_concepts=key_concepts[:8]  # Limit to 8 concepts
             )
         
         except Exception as e:
