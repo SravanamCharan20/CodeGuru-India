@@ -8,12 +8,19 @@ def render_explanation_view():
     
     session_manager = st.session_state.session_manager
     uploaded_code = session_manager.get_uploaded_code()
+    repo_analysis = st.session_state.get("current_repo_analysis", None)
     
-    if not uploaded_code:
-        st.info("📤 Upload code first to see explanations!")
+    # Check if we have either uploaded code or repo analysis
+    if not uploaded_code and not repo_analysis:
+        st.info("📤 Upload code or analyze a repository first to see explanations!")
         if st.button("Go to Upload"):
             st.session_state.current_page = "Upload Code"
             st.rerun()
+        return
+    
+    # Display repository analysis if available
+    if repo_analysis:
+        _render_repo_analysis(repo_analysis)
         return
     
     # Get analysis from session if available
@@ -346,3 +353,76 @@ def _render_issues_tab(analysis):
                 st.markdown(f"**Line Number:** {issue['line']}")
                 st.markdown(f"**Issue:** {issue['description']}")
                 st.markdown(f"**Suggestion:** {issue['suggestion']}")
+
+
+
+def _render_repo_analysis(repo_analysis):
+    """Render repository analysis results."""
+    st.markdown("### 📦 Repository Analysis")
+    
+    # Display summary
+    st.text(repo_analysis.summary)
+    
+    st.divider()
+    
+    # Display metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Files", repo_analysis.total_files)
+    with col2:
+        st.metric("Total Lines", f"{repo_analysis.total_lines:,}")
+    with col3:
+        size_mb = repo_analysis.total_size_bytes / (1024 * 1024)
+        st.metric("Size", f"{size_mb:.2f} MB")
+    with col4:
+        st.metric("Languages", len(repo_analysis.languages))
+    
+    st.divider()
+    
+    # Language breakdown
+    st.markdown("### 📊 Language Breakdown")
+    
+    # Create bar chart data
+    import pandas as pd
+    lang_data = pd.DataFrame([
+        {"Language": lang, "Lines": lines}
+        for lang, lines in list(repo_analysis.languages.items())[:10]
+    ])
+    
+    if not lang_data.empty:
+        st.bar_chart(lang_data.set_index("Language"))
+    
+    st.divider()
+    
+    # File tree
+    st.markdown("### 📁 File Structure")
+    
+    for directory, files in list(repo_analysis.file_tree.items())[:10]:
+        with st.expander(f"📂 {directory} ({len(files)} files)", expanded=False):
+            for file in files[:20]:  # Limit to 20 files per directory
+                st.text(f"  📄 {file.name} ({file.lines} lines)")
+    
+    st.divider()
+    
+    # Main files
+    if repo_analysis.main_files:
+        st.markdown("### ⭐ Main Files")
+        
+        for file in repo_analysis.main_files:
+            st.info(f"📄 {file.path} ({file.lines} lines)")
+    
+    # Action buttons
+    st.divider()
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔍 Analyze Main Files", use_container_width=True):
+            st.info("💡 Deep file analysis coming soon!")
+    
+    with col2:
+        if st.button("📤 Upload Different Repo", use_container_width=True):
+            # Clear repo analysis
+            if "current_repo_analysis" in st.session_state:
+                del st.session_state.current_repo_analysis
+            st.session_state.current_page = "Upload Code"
+            st.rerun()

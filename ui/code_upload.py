@@ -92,7 +92,8 @@ def render_code_upload():
     # Analyze button
     st.divider()
     if st.button("🚀 Analyze Code", type="primary", use_container_width=True):
-        if session_manager.get_uploaded_code() or repo_url:
+        if session_manager.get_uploaded_code():
+            # File upload analysis
             with st.spinner("🔍 Analyzing your code..."):
                 # Get the analyzer from session state
                 if "code_analyzer" in st.session_state:
@@ -132,8 +133,38 @@ def render_code_upload():
                 
                 st.session_state.current_page = "Explanations"
                 st.rerun()
+        
+        elif repo_url and repo_url.startswith("https://github.com/"):
+            # Repository analysis
+            with st.spinner("🔍 Cloning and analyzing repository..."):
+                if "repo_analyzer" in st.session_state:
+                    try:
+                        repo_analysis = st.session_state.repo_analyzer.analyze_repo(
+                            repo_url=repo_url,
+                            max_size_mb=app_config.max_repo_size_mb
+                        )
+                        
+                        if repo_analysis:
+                            # Store in session
+                            st.session_state.current_repo_analysis = repo_analysis
+                            
+                            # Display summary
+                            st.success("✅ Repository analysis complete!")
+                            st.text(repo_analysis.summary)
+                            
+                            # Navigate to explanations
+                            st.session_state.current_page = "Explanations"
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to analyze repository. Please check the URL and try again.")
+                    
+                    except Exception as e:
+                        st.error(f"❌ Repository analysis failed: {str(e)}")
+                else:
+                    st.error("❌ Repository analyzer not initialized.")
+        
         else:
-            st.warning("⚠️ Please upload a file or enter a repository URL first.")
+            st.warning("⚠️ Please upload a file or enter a valid GitHub repository URL first.")
 
 
 def _detect_language(filename: str) -> str:
