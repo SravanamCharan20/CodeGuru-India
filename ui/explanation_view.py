@@ -178,12 +178,77 @@ def _render_diagrams_tab():
     """Render diagrams tab."""
     st.markdown("### 📊 Visual Diagrams")
     
+    # Get analysis and code from session
+    analysis = st.session_state.get("current_analysis", None)
+    code = st.session_state.session_manager.get_uploaded_code()
+    
     diagram_type = st.selectbox(
         "Select Diagram Type",
-        ["Flowchart", "Class Diagram", "Sequence Diagram", "Architecture"]
+        ["Flowchart", "Class Diagram", "Architecture", "Sequence Diagram"]
     )
     
-    # Mock Mermaid diagram
+    if analysis and code:
+        # Generate real diagrams
+        if "diagram_generator" not in st.session_state:
+            from generators.diagram_generator import DiagramGenerator
+            st.session_state.diagram_generator = DiagramGenerator()
+        
+        diagram_gen = st.session_state.diagram_generator
+        
+        try:
+            if diagram_type == "Flowchart":
+                st.markdown("#### Function Flow")
+                # Get first function for flowchart
+                if analysis.structure.functions:
+                    func = analysis.structure.functions[0]
+                    # Extract function code (simplified)
+                    diagram = diagram_gen.generate_flowchart(code, func.name)
+                else:
+                    diagram = diagram_gen.generate_flowchart(code, "main")
+                
+                st.code(diagram, language="mermaid")
+            
+            elif diagram_type == "Class Diagram":
+                st.markdown("#### Class Structure")
+                diagram = diagram_gen.generate_class_diagram(analysis.structure.classes)
+                st.code(diagram, language="mermaid")
+            
+            elif diagram_type == "Architecture":
+                st.markdown("#### Project Architecture")
+                filename = st.session_state.get("uploaded_filename", "Project")
+                project_name = filename.split('.')[0]
+                diagram = diagram_gen.generate_architecture_diagram(
+                    analysis.structure,
+                    project_name
+                )
+                st.code(diagram, language="mermaid")
+            
+            elif diagram_type == "Sequence Diagram":
+                st.markdown("#### API Interaction Flow")
+                diagram = diagram_gen.generate_sequence_diagram(code)
+                st.code(diagram, language="mermaid")
+            
+            # Download buttons
+            st.divider()
+            col1, col2 = st.columns(2)
+            with col1:
+                st.button("📥 Download PNG", use_container_width=True)
+            with col2:
+                st.button("📥 Download SVG", use_container_width=True)
+            
+            st.info("💡 Copy the Mermaid code above and paste it into https://mermaid.live to view the rendered diagram!")
+        
+        except Exception as e:
+            st.error(f"Error generating diagram: {str(e)}")
+            st.info("Showing example diagram instead")
+            _render_mock_diagram(diagram_type)
+    else:
+        # Show mock diagrams
+        _render_mock_diagram(diagram_type)
+
+
+def _render_mock_diagram(diagram_type: str):
+    """Render mock diagram when no analysis available."""
     if diagram_type == "Flowchart":
         st.markdown("#### Authentication Flow")
         st.code("""

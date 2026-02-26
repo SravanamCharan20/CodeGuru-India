@@ -61,14 +61,28 @@ def initialize_backend_services():
             prompt_manager = PromptManager()
             orchestrator = LangChainOrchestrator(bedrock_client, prompt_manager)
             
-            # Initialize code analyzer
+            # Initialize analyzers and engines
             code_analyzer = CodeAnalyzer(orchestrator)
+            
+            from engines.explanation_engine import ExplanationEngine
+            from engines.quiz_engine import QuizEngine
+            from generators.diagram_generator import DiagramGenerator
+            from learning.path_manager import LearningPathManager
+            
+            explanation_engine = ExplanationEngine(orchestrator)
+            quiz_engine = QuizEngine(orchestrator)
+            diagram_generator = DiagramGenerator()
+            path_manager = LearningPathManager()
             
             # Store in session state
             st.session_state.bedrock_client = bedrock_client
             st.session_state.prompt_manager = prompt_manager
             st.session_state.orchestrator = orchestrator
             st.session_state.code_analyzer = code_analyzer
+            st.session_state.explanation_engine = explanation_engine
+            st.session_state.quiz_engine = quiz_engine
+            st.session_state.diagram_generator = diagram_generator
+            st.session_state.path_manager = path_manager
             st.session_state.backend_initialized = True
             
         except Exception as e:
