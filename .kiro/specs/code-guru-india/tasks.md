@@ -101,6 +101,10 @@ The implementation is organized into phases:
   - [x] 5.2 Add diagram download buttons
     - Add PNG and SVG download buttons (placeholder functionality)
     - _Requirements: 10.7_
+  
+  - [ ]* 5.3 Write property test for issue prioritization
+    - **Property 15: Issue Prioritization**
+    - **Validates: Requirements 5.5**
 
 - [ ] 6. Learning path view UI (with mock data)
   - [x] 6.1 Create ui/learning_path.py with path selection
@@ -243,11 +247,15 @@ The implementation is organized into phases:
     - **Property 8: Code Parsing Performance**
     - **Validates: Requirements 3.2**
   
-  - [ ]* 14.4 Write property test for structure extraction
+  - [ ]* 14.4 Write property test for structure extraction completeness
     - **Property 12: Structure Extraction Completeness**
     - **Validates: Requirements 4.2**
   
-  - [ ]* 14.5 Write property test for issue detection
+  - [ ]* 14.5 Write property test for pattern identification
+    - **Property 13: Pattern Identification**
+    - **Validates: Requirements 4.4**
+  
+  - [ ]* 14.6 Write property test for issue detection completeness
     - **Property 14: Issue Detection Completeness**
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
 
@@ -332,6 +340,10 @@ The implementation is organized into phases:
   - [ ]* 19.2 Write property test for diagram generation completeness
     - **Property 32: Diagram Generation Completeness**
     - **Validates: Requirements 10.1, 10.2, 10.3, 10.4**
+  
+  - [ ]* 19.3 Write property test for diagram interactivity
+    - **Property 34: Diagram Interactivity**
+    - **Validates: Requirements 10.6**
 
 - [ ] 20. Voice processor implementation
   - [x] 20.1 Create ai/voice_processor.py with VoiceProcessor class
@@ -349,11 +361,15 @@ The implementation is organized into phases:
     - **Property 5: Voice Processing Performance**
     - **Validates: Requirements 2.6**
   
-  - [ ]* 20.4 Write unit tests for voice processor
+  - [ ]* 20.4 Write property test for voice error handling
+    - **Property 6: Voice Error Handling**
+    - **Validates: Requirements 2.4**
+  
+  - [ ]* 20.5 Write unit tests for voice processor
     - Test audio processing with mocked AWS Transcribe
     - Test language detection
-    - Test error handling for unclear audio
-    - _Requirements: 2.4_
+    - Test accent handling for Indian English, Hindi, Telugu
+    - _Requirements: 2.2, 2.4_
 
 - [ ] 21. Integrate voice input with upload UI
   - [x] 21.1 Wire VoiceProcessor to code upload interface
@@ -411,7 +427,11 @@ The implementation is organized into phases:
     - **Property 36: Skill Level Tracking**
     - **Validates: Requirements 11.4**
   
-  - [ ]* 23.4 Write property test for progress persistence
+  - [ ]* 23.4 Write property test for performance comparison
+    - **Property 37: Performance Comparison**
+    - **Validates: Requirements 11.6**
+  
+  - [ ]* 23.5 Write property test for progress persistence
     - **Property 41: Progress Persistence**
     - **Validates: Requirements 13.2**
 
@@ -605,16 +625,35 @@ The implementation is organized into phases:
     - Test repository analysis flow
     - _Requirements: All_
   
-  - [ ] 35.2 Run all property tests
-    - Execute all 44 property tests with 100+ iterations each
-    - Verify all properties hold
+  - [ ]* 35.2 Run all property tests (44 properties)
+    - Execute all property tests with 100+ iterations each
+    - Verify Properties 1-44 all hold
+    - Language properties (1-3)
+    - Voice properties (4-6)
+    - Code analysis properties (7-15)
+    - Explanation properties (16-18)
+    - Flashcard properties (19-22)
+    - Quiz properties (23-26)
+    - Learning path properties (27-31)
+    - Diagram properties (32-34)
+    - Progress tracking properties (35-38)
+    - Tech stack properties (39)
+    - Session management properties (40-44)
     - _Requirements: All_
   
-  - [ ] 35.3 Performance testing
+  - [ ]* 35.3 Performance testing
     - Test with files up to 10MB
     - Test with repositories up to 100MB
-    - Verify response times meet requirements
+    - Verify response times meet requirements (UI: 500ms, summaries: 5s, voice: 3s)
+    - Test concurrent usage scenarios
     - _Requirements: NFR-1, NFR-2_
+  
+  - [ ]* 35.4 Security testing
+    - Test input sanitization for code injection
+    - Test file upload validation for malicious content
+    - Verify code is not persisted after session
+    - Test HTTPS enforcement
+    - _Requirements: NFR-4, NFR-5_
 
 - [ ] 36. Deployment preparation
   - [ ] 36.1 Create deployment configuration
@@ -648,3 +687,75 @@ The implementation is organized into phases:
 - Integration tests validate end-to-end user flows
 - All code should follow Python PEP 8 style guidelines
 - Mock AWS Bedrock calls in tests to avoid API costs during development
+
+## Property Test Coverage Summary
+
+The implementation plan includes property tests for all 44 correctness properties defined in the design document:
+
+**Language & Localization (Properties 1-3):**
+- Task 3.3: Property 1 - Language Preference Persistence
+- Task 3.4: Property 2 - Consistent Language Rendering
+- Task 3.5: Property 3 - Language Switch Performance
+
+**Voice Processing (Properties 4-6):**
+- Task 20.2: Property 4 - Voice Transcription Completeness
+- Task 20.3: Property 5 - Voice Processing Performance
+- Task 20.4: Property 6 - Voice Error Handling
+
+**Code Analysis (Properties 7-15):**
+- Task 14.2: Property 7 - File Format Support
+- Task 14.3: Property 8 - Code Parsing Performance
+- Task 15.2: Property 9 - Repository Analysis Completeness
+- Task 4.3: Property 10 - File Processing Error Handling
+- Task 33.2: Property 11 - Summary Generation Performance
+- Task 14.4: Property 12 - Structure Extraction Completeness
+- Task 14.5: Property 13 - Pattern Identification
+- Task 14.6: Property 14 - Issue Detection Completeness
+- Task 5.3: Property 15 - Issue Prioritization
+
+**Explanation (Properties 16-18):**
+- Task 16.2: Property 16 - Analogy Inclusion
+- Task 16.3: Property 17 - Example Completeness
+- Task 16.4: Property 18 - Explanation Simplification
+
+**Flashcards (Properties 19-22):**
+- Task 27.2: Property 19 - Flashcard Generation
+- Task 27.3: Property 20 - Flashcard Organization
+- Task 28.2: Property 21 - Flashcard Review Tracking
+- Task 27.4: Property 22 - Mastered Flashcard Scheduling
+
+**Quizzes (Properties 23-26):**
+- Task 25.2: Property 23 - Quiz Generation
+- Task 25.3: Property 24 - Quiz Feedback Completeness
+- Task 26.2: Property 25 - Quiz Score Persistence
+- Task 26.3: Property 26 - Quiz Summary Completeness (via integration test)
+
+**Learning Paths (Properties 27-31):**
+- Task 24.2: Property 27 - Learning Path Roadmap
+- Task 24.3: Property 28 - Progress Tracking (via integration test)
+- Task 22.2: Property 29 - Prerequisite Enforcement
+- Task 22.3: Property 30 - Milestone Achievement (via unit test)
+- Task 22.3: Property 31 - Topic Recommendation
+
+**Diagrams (Properties 32-34):**
+- Task 19.2: Property 32 - Diagram Generation Completeness
+- Task 18.2: Property 33 - Mermaid Format Compliance
+- Task 19.3: Property 34 - Diagram Interactivity
+
+**Progress Tracking (Properties 35-38):**
+- Task 23.2: Property 35 - Metrics Tracking
+- Task 23.3: Property 36 - Skill Level Tracking
+- Task 23.4: Property 37 - Performance Comparison
+- Task 29.2: Property 38 - Weekly Summary Generation
+
+**Tech Stack (Property 39):**
+- Task 31.2: Property 39 - Framework-Specific Insights
+
+**Session Management (Properties 40-44):**
+- Task 2.2: Property 40 - Preference Persistence
+- Task 23.5: Property 41 - Progress Persistence
+- Task 2.3: Property 42 - Session State Round-Trip
+- Task 2.4: Property 43 - Session Data Retention
+- Task 32.2: Property 44 - Graceful Error Recovery
+
+All property tests should be configured to run with minimum 100 iterations using Hypothesis framework.
