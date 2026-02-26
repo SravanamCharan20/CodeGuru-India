@@ -1,10 +1,11 @@
 """Flashcard interface component."""
 import streamlit as st
+from ui.design_system import section_header, spacing, info_box
 
 
 def render_flashcard_view():
     """Render flashcard interface."""
-    st.title("🗂️ Interactive Flashcards")
+    st.markdown("# Interactive Flashcards")
     
     # Initialize flashcard state
     if "current_card" not in st.session_state:
@@ -16,19 +17,19 @@ def render_flashcard_view():
     flashcard_manager = st.session_state.get("flashcard_manager")
     
     if not flashcard_manager:
-        st.warning("⚠️ Flashcard manager not initialized. Please restart the app.")
+        info_box("Flashcard manager not initialized. Please restart the app.", "warning")
         return
     
     # Filters
     col1, col2 = st.columns(2)
     with col1:
         topic_filter = st.selectbox(
-            "📚 Topic",
+            "Topic",
             ["All Topics", "Functions", "Classes", "Patterns", "React", "JavaScript", "Node.js", "AWS", "Data Structures"]
         )
     with col2:
         difficulty_filter = st.selectbox(
-            "📊 Difficulty",
+            "Difficulty",
             ["All Levels", "Beginner", "Intermediate", "Advanced"]
         )
     

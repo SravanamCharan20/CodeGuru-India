@@ -1,10 +1,11 @@
 """Code explanation view component."""
 import streamlit as st
+from ui.design_system import section_header, spacing, info_box
 
 
 def render_explanation_view():
     """Render code explanation interface with tabs."""
-    st.title("💡 Code Explanations")
+    st.markdown("# Code Explanations")
     
     session_manager = st.session_state.session_manager
     uploaded_code = session_manager.get_uploaded_code()
@@ -12,7 +13,7 @@ def render_explanation_view():
     
     # Check if we have either uploaded code or repo analysis
     if not uploaded_code and not repo_analysis:
-        st.info("📤 Upload code or analyze a repository first to see explanations!")
+        info_box("Upload code or analyze a repository first to see explanations!", "info")
         if st.button("Go to Upload"):
             st.session_state.current_page = "Upload Code"
             st.rerun()
@@ -27,7 +28,7 @@ def render_explanation_view():
     analysis = st.session_state.get("current_analysis", None)
     
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Summary", "📖 Details", "📊 Diagrams", "🐛 Issues"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Summary", "Details", "Diagrams", "Issues"])
     
     with tab1:
         _render_summary_tab(analysis)

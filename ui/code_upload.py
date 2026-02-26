@@ -1,69 +1,101 @@
 """Code upload interface component."""
 import streamlit as st
 from config import load_config
+from ui.design_system import section_header, spacing, info_box
 
 
 def render_code_upload():
     """Render code upload interface."""
-    st.title("📤 Upload Code for Analysis")
+    from ui.design_system import section_header, spacing
+    
+    # Header - minimal
+    section_header("Upload Code for Analysis", "Upload files, analyze GitHub repositories, or ask questions with voice")
     
     _, app_config = load_config()
     session_manager = st.session_state.session_manager
     
     # Create tabs for different upload methods
-    tab1, tab2, tab3 = st.tabs(["📁 File Upload", "🔗 GitHub Repository", "🎤 Voice Query"])
+    tab1, tab2, tab3 = st.tabs(["File Upload", "GitHub Repository", "Voice Query"])
     
     with tab1:
-        st.markdown("### Upload a Code File")
-        st.caption(f"Supported formats: {', '.join(app_config.supported_extensions)}")
-        st.caption(f"Max file size: {app_config.max_file_size_mb}MB")
+        spacing("md")
+        
+        st.markdown("""
+        <div style="
+            background: #F9F9F9;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #E5E5E5;
+        ">
+            <p style="color: #1A1A1A; font-weight: 500; margin-bottom: 8px; font-size: 15px;">
+                Supported Formats
+            </p>
+            <p style="color: #666666; font-size: 13px; margin-bottom: 12px;">
+                Python, JavaScript, TypeScript, Java, C++, C, Go, Ruby
+            </p>
+            <p style="color: #1A1A1A; font-weight: 500; margin-bottom: 8px; font-size: 15px;">
+                Max File Size
+            </p>
+            <p style="color: #666666; font-size: 13px; margin: 0;">
+                {max_size} MB
+            </p>
+        </div>
+        """.format(max_size=app_config.max_file_size_mb), unsafe_allow_html=True)
         
         uploaded_file = st.file_uploader(
             "Choose a code file",
             type=[ext.replace(".", "") for ext in app_config.supported_extensions],
-            help="Upload a code file to analyze"
+            help="Drag and drop or click to upload",
+            label_visibility="collapsed"
         )
         
         if uploaded_file is not None:
             # Read file content
             file_content = uploaded_file.read().decode("utf-8")
             file_size_mb = len(file_content) / (1024 * 1024)
+            lines_count = len(file_content.split('\n'))
             
-            # Display file info
+            spacing("md")
+            
+            # Display file info - minimal metrics
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("File Name", uploaded_file.name)
+                st.metric("File Name", uploaded_file.name[:20] + "..." if len(uploaded_file.name) > 20 else uploaded_file.name)
             with col2:
                 st.metric("File Size", f"{file_size_mb:.2f} MB")
             with col3:
-                st.metric("Lines", len(file_content.split('\n')))
+                st.metric("Lines of Code", f"{lines_count:,}")
             
             # Store in session
             session_manager.set_uploaded_code(file_content, uploaded_file.name)
             
+            spacing("md")
+            
             # Show code preview
-            with st.expander("📄 Preview Code", expanded=False):
-                st.code(file_content, language=_detect_language(uploaded_file.name))
+            with st.expander("Preview Code", expanded=False):
+                st.code(file_content, language=_detect_language(uploaded_file.name), line_numbers=True)
     
     with tab2:
-        st.markdown("### Analyze GitHub Repository")
-        st.caption(f"Max repository size: {app_config.max_repo_size_mb}MB")
+        spacing("md")
+        
+        info_box("Analyze entire repositories with automatic file detection and language breakdown", "info")
         
         repo_url = st.text_input(
             "GitHub Repository URL",
             placeholder="https://github.com/username/repository",
-            help="Enter a public GitHub repository URL"
+            help="Enter a public GitHub repository URL",
+            label_visibility="collapsed"
         )
         
         if repo_url:
             if repo_url.startswith("https://github.com/"):
-                st.success(f"✅ Valid GitHub URL: {repo_url}")
+                info_box("Valid GitHub URL detected", "success")
             else:
-                st.error("❌ Please enter a valid GitHub URL")
+                info_box("Please enter a valid GitHub URL (must start with https://github.com/)", "error")
     
     with tab3:
-        st.markdown("### Ask Questions with Voice")
-        st.caption("Speak in English, Hindi, or Telugu")
+        spacing("md")
         
         # Initialize voice query state
         if "voice_query" not in st.session_state:
@@ -73,25 +105,22 @@ def render_code_upload():
         voice_processor = st.session_state.get("voice_processor")
         
         if voice_processor:
-            # Show supported languages
             languages = voice_processor.get_supported_languages()
-            st.info(f"🗣️ Supported: {', '.join(languages.values())}")
+            info_box(f"Multi-Language Voice Support: {', '.join(languages.values())}", "info")
         
-        col1, col2 = st.columns([1, 3])
+        col1, col2 = st.columns([1, 2])
         
         with col1:
-            # Voice recording button (placeholder - requires audio recording library)
-            if st.button("🎤 Start Recording", use_container_width=True):
-                st.info("🎙️ Voice recording requires audio input. Use the text box below for now!")
-                st.caption("💡 To enable voice: Install streamlit-audio-recorder")
+            if st.button("🎤 Start Recording", use_container_width=True, type="secondary"):
+                st.info("🎙️ Voice recording requires audio input. Use the text box for now!")
         
         with col2:
-            # Text input as alternative
             voice_query = st.text_area(
-                "Or type your question here",
+                "Type your question",
                 placeholder="What does this function do?\nExplain the authentication logic\nHow does this code work?",
-                height=100,
-                key="voice_query_input"
+                height=120,
+                key="voice_query_input",
+                label_visibility="collapsed"
             )
             
             if voice_query:
@@ -102,52 +131,45 @@ def render_code_upload():
             if st.button("🚀 Process Query", type="primary", use_container_width=True):
                 with st.spinner("🔍 Processing your query..."):
                     query = st.session_state.voice_query
-                    
-                    # Get uploaded code
                     code = session_manager.get_uploaded_code()
                     
                     if code and "explanation_engine" in st.session_state:
                         try:
                             language = session_manager.get_language_preference()
-                            
-                            # Generate explanation based on query
                             explanation = st.session_state.explanation_engine.explain_code(
                                 code=code,
                                 language=language,
                                 difficulty="intermediate"
                             )
                             
-                            # Store in session
                             st.session_state.voice_query_result = {
                                 "query": query,
                                 "explanation": explanation
                             }
                             
-                            st.success("✅ Query processed! View results below.")
+                            info_box("Query processed successfully!", "success")
                             
-                            # Display result
-                            with st.expander("📝 Answer", expanded=True):
+                            with st.expander("Answer", expanded=True):
                                 st.markdown(f"**Your Question:** {query}")
                                 st.divider()
-                                st.markdown(explanation)
+                                st.markdown(explanation.detailed_explanation if hasattr(explanation, 'detailed_explanation') else str(explanation))
                         
                         except Exception as e:
-                            st.error(f"❌ Failed to process query: {str(e)}")
+                            info_box(f"Failed to process query: {str(e)}", "error")
                     
                     elif not code:
-                        st.warning("⚠️ Please upload code first to ask questions about it!")
-                    
+                        info_box("Please upload code first to ask questions about it!", "warning")
                     else:
-                        st.info("💡 Explanation engine not available. Configure AWS credentials for AI-powered answers.")
+                        info_box("Explanation engine not available. Configure AWS credentials for AI-powered answers.", "info")
     
     # Analysis options
-    st.divider()
-    st.markdown("### ⚙️ Analysis Options")
+    spacing("lg")
+    section_header("Analysis Options")
     
     col1, col2 = st.columns(2)
     with col1:
-        enable_debugging = st.checkbox("🐛 Enable Debugging Analysis", value=True)
-        generate_diagrams = st.checkbox("📊 Generate Diagrams", value=True)
+        enable_debugging = st.checkbox("Enable Debugging Analysis", value=True)
+        generate_diagrams = st.checkbox("Generate Diagrams", value=True)
     
     with col2:
         difficulty_level = st.select_slider(
@@ -155,84 +177,80 @@ def render_code_upload():
             options=["Beginner", "Intermediate", "Advanced"],
             value="Intermediate"
         )
-        generate_flashcards = st.checkbox("🗂️ Generate Flashcards", value=True)
+        generate_flashcards = st.checkbox("Generate Flashcards", value=True)
     
     # Analyze button
-    st.divider()
-    if st.button("🚀 Analyze Code", type="primary", use_container_width=True):
-        if session_manager.get_uploaded_code():
-            # File upload analysis
-            with st.spinner("🔍 Analyzing your code..."):
-                # Get the analyzer from session state
-                if "code_analyzer" in st.session_state:
-                    code = session_manager.get_uploaded_code()
-                    filename = st.session_state.get("uploaded_filename", "code.py")
-                    language = session_manager.get_language_preference()
+    spacing("lg")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("Analyze Code", type="primary", use_container_width=True):
+            _handle_analysis(session_manager, repo_url, app_config, generate_flashcards)
+
+
+def _handle_analysis(session_manager, repo_url, app_config, generate_flashcards):
+    """Handle code analysis."""
+    if session_manager.get_uploaded_code():
+        with st.spinner("🔍 Analyzing your code..."):
+            if "code_analyzer" in st.session_state:
+                code = session_manager.get_uploaded_code()
+                filename = st.session_state.get("uploaded_filename", "code.py")
+                language = session_manager.get_language_preference()
+                
+                try:
+                    analysis = st.session_state.code_analyzer.analyze_file(
+                        code=code,
+                        filename=filename,
+                        language=language
+                    )
                     
-                    try:
-                        # Perform actual analysis
-                        analysis = st.session_state.code_analyzer.analyze_file(
-                            code=code,
-                            filename=filename,
+                    st.session_state.current_analysis = analysis
+                    
+                    if generate_flashcards and "flashcard_manager" in st.session_state:
+                        flashcards = st.session_state.flashcard_manager.generate_flashcards(
+                            code_analysis=analysis,
                             language=language
                         )
-                        
-                        # Store analysis in session
-                        st.session_state.current_analysis = analysis
-                        
-                        # Generate flashcards if requested
-                        if generate_flashcards and "flashcard_manager" in st.session_state:
-                            flashcards = st.session_state.flashcard_manager.generate_flashcards(
-                                code_analysis=analysis,
-                                language=language
-                            )
-                            if flashcards:
-                                st.success(f"✅ Analysis complete! Generated {len(flashcards)} flashcards.")
-                            else:
-                                st.success("✅ Analysis complete! View results in the Explanations tab.")
+                        if flashcards:
+                            st.success(f"✅ Analysis complete! Generated {len(flashcards)} flashcards.")
                         else:
                             st.success("✅ Analysis complete! View results in the Explanations tab.")
-                        
-                    except Exception as e:
-                        st.error(f"❌ Analysis failed: {str(e)}")
-                        st.info("💡 Showing mock data instead. Configure AWS credentials for real analysis.")
-                else:
-                    st.info("💡 Showing mock data. Configure AWS credentials for real AI analysis.")
-                
-                st.session_state.current_page = "Explanations"
-                st.rerun()
-        
-        elif repo_url and repo_url.startswith("https://github.com/"):
-            # Repository analysis
-            with st.spinner("🔍 Cloning and analyzing repository..."):
-                if "repo_analyzer" in st.session_state:
-                    try:
-                        repo_analysis = st.session_state.repo_analyzer.analyze_repo(
-                            repo_url=repo_url,
-                            max_size_mb=app_config.max_repo_size_mb
-                        )
-                        
-                        if repo_analysis:
-                            # Store in session
-                            st.session_state.current_repo_analysis = repo_analysis
-                            
-                            # Display summary
-                            st.success("✅ Repository analysis complete!")
-                            st.text(repo_analysis.summary)
-                            
-                            # Navigate to explanations
-                            st.session_state.current_page = "Explanations"
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to analyze repository. Please check the URL and try again.")
+                    else:
+                        st.success("✅ Analysis complete! View results in the Explanations tab.")
                     
-                    except Exception as e:
-                        st.error(f"❌ Repository analysis failed: {str(e)}")
-                else:
-                    st.error("❌ Repository analyzer not initialized.")
-        
-        else:
-            st.warning("⚠️ Please upload a file or enter a valid GitHub repository URL first.")
+                except Exception as e:
+                    st.error(f"❌ Analysis failed: {str(e)}")
+                    st.info("💡 Showing mock data instead. Configure AWS credentials for real analysis.")
+            else:
+                st.info("💡 Showing mock data. Configure AWS credentials for real AI analysis.")
+            
+            st.session_state.current_page = "Explanations"
+            st.rerun()
+    
+    elif repo_url and repo_url.startswith("https://github.com/"):
+        with st.spinner("🔍 Cloning and analyzing repository..."):
+            if "repo_analyzer" in st.session_state:
+                try:
+                    repo_analysis = st.session_state.repo_analyzer.analyze_repo(
+                        repo_url=repo_url,
+                        max_size_mb=app_config.max_repo_size_mb
+                    )
+                    
+                    if repo_analysis:
+                        st.session_state.current_repo_analysis = repo_analysis
+                        st.success("✅ Repository analysis complete!")
+                        st.session_state.current_page = "Explanations"
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to analyze repository. Please check the URL and try again.")
+                
+                except Exception as e:
+                    st.error(f"❌ Repository analysis failed: {str(e)}")
+            else:
+                st.error("❌ Repository analyzer not initialized.")
+    
+    else:
+        st.warning("⚠️ Please upload a file or enter a valid GitHub repository URL first.")
 
 
 def _detect_language(filename: str) -> str:

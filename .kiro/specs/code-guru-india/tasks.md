@@ -572,6 +572,59 @@ The implementation is organized into phases:
     - **Property 39: Framework-Specific Insights**
     - **Validates: Requirements 12.1, 12.5**
 
+- [x] 31.5 Apply production-grade design system to all pages
+  - [x] 31.5.1 Update app.py to load design_system.py instead of styles.py
+    - Replace styles.py import with design_system.py
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.2 Redesign home page with minimal aesthetic
+    - Remove gradient effects and decorative elements
+    - Use single accent color (#0066CC)
+    - Apply clean typography and generous whitespace
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.3 Redesign sidebar with new design system
+    - Apply minimal styling with subtle borders
+    - Remove gradient backgrounds
+    - Use system fonts and clean spacing
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.4 Redesign code upload page
+    - Simplify file uploader styling
+    - Remove decorative cards and gradients
+    - Apply minimal button and input styles
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.5 Redesign explanation view
+    - Simplify tab interface
+    - Remove gradient text effects
+    - Apply clean card styling with subtle borders
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.6 Redesign learning path view
+    - Simplify path cards and progress indicators
+    - Remove decorative icons and gradients
+    - Apply minimal status indicators
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.7 Redesign quiz view
+    - Simplify question display and answer inputs
+    - Remove decorative elements
+    - Apply clean feedback styling
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.8 Redesign flashcard view
+    - Simplify card flip interaction
+    - Remove decorative styling
+    - Apply minimal navigation controls
+    - _Requirements: NFR-7_
+  
+  - [x] 31.5.9 Redesign progress dashboard
+    - Simplify metrics display
+    - Remove gradient effects from charts
+    - Apply clean data visualization
+    - _Requirements: NFR-7_
+
 - [ ] 32. Error handling and resilience
   - [ ] 32.1 Implement comprehensive error handling
     - Add input validation for all file uploads

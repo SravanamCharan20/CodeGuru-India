@@ -33,11 +33,81 @@ def main():
 def setup_page_config():
     """Configure Streamlit page settings."""
     st.set_page_config(
-        page_title="CodeGuru India",
+        page_title="CodeGuru India - AI-Powered Code Learning",
         page_icon="🎓",
         layout="wide",
-        initial_sidebar_state="expanded"
+        initial_sidebar_state="expanded",
+        menu_items={
+            'Get Help': None,
+            'Report a bug': None,
+            'About': "CodeGuru India - Learn code faster with AI-powered explanations"
+        }
     )
+    
+    # Load custom CSS
+    from ui.design_system import load_design_system
+    load_design_system()
+    
+    # Add custom CSS for sidebar toggle functionality
+    st.markdown("""
+    <style>
+    /* Make sure the default Streamlit collapse button is always visible and functional */
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: fixed !important;
+        top: 0.5rem !important;
+        left: 0.5rem !important;
+        z-index: 999999 !important;
+        background: white !important;
+        border: 1px solid #E5E5E5 !important;
+        border-radius: 6px !important;
+        padding: 8px 12px !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+        cursor: pointer !important;
+    }
+    
+    [data-testid="collapsedControl"]:hover {
+        background: #F9F9F9 !important;
+        border-color: #0066CC !important;
+    }
+    
+    /* Style the hamburger icon */
+    [data-testid="collapsedControl"] svg {
+        color: #1A1A1A !important;
+        width: 20px !important;
+        height: 20px !important;
+    }
+    
+    /* Ensure sidebar close button is visible */
+    [data-testid="stSidebar"] button[kind="header"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        background: white !important;
+        border: 1px solid #E5E5E5 !important;
+        border-radius: 6px !important;
+        padding: 8px !important;
+        margin: 8px !important;
+    }
+    
+    [data-testid="stSidebar"] button[kind="header"]:hover {
+        background: #F9F9F9 !important;
+        border-color: #0066CC !important;
+    }
+    
+    /* Make sure sidebar can be interacted with */
+    [data-testid="stSidebar"] {
+        z-index: 999998 !important;
+    }
+    
+    /* Ensure main content doesn't overlap with toggle button */
+    .main .block-container {
+        padding-left: 3rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 
 def initialize_session_state():
@@ -113,26 +183,103 @@ def route_to_page(page: str):
     from ui.progress_dashboard import render_progress_dashboard
     
     if page == "Home":
-        st.title("🎓 Welcome to CodeGuru India")
-        st.markdown("""
-        ### Learn Code Faster with AI-Powered Explanations
+        from ui.design_system import section_header, spacing, info_box
         
-        CodeGuru India helps you understand complex codebases through:
-        - 🔍 **Smart Code Analysis** - Upload files or GitHub repos
-        - 🗣️ **Voice Queries** - Ask questions in English, Hindi, or Telugu
-        - 📚 **Interactive Learning** - Flashcards, quizzes, and learning paths
-        - 📊 **Progress Tracking** - Monitor your growth over time
-        - 🎯 **Simple Analogies** - Complex concepts explained simply
+        # Hero section - minimal and clean
+        st.markdown("# CodeGuru India")
+        st.markdown('<p style="color: #666666; font-size: 17px; margin-top: -8px; margin-bottom: 32px;">Learn code faster with AI-powered explanations</p>', unsafe_allow_html=True)
         
-        Get started by uploading code or selecting a learning path!
-        """)
+        spacing("lg")
         
-        # Show backend status
+        # Features grid - simple cards
+        section_header("Features")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px; margin-bottom: 16px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Smart Code Analysis</h3>
+                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Upload files or GitHub repos for instant AI-powered analysis with detailed insights</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Interactive Learning</h3>
+                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Flashcards, quizzes, and structured learning paths tailored to your goals</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px; margin-bottom: 16px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Voice Queries</h3>
+                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Ask questions in English, Hindi, or Telugu and get instant answers</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Progress Tracking</h3>
+                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Monitor your growth with detailed analytics and achievement badges</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown("""
+            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px; margin-bottom: 16px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Simple Analogies</h3>
+                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Complex concepts explained with culturally relevant Indian examples</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px;">
+                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Visual Diagrams</h3>
+                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Auto-generate flowcharts, class diagrams, and architecture visualizations</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        spacing("2xl")
+        
+        # Status section
+        section_header("Get Started")
+        
         if st.session_state.get("backend_initialized", False):
-            st.success("✅ AI services initialized and ready!")
+            info_box("AI Services Active - Full functionality enabled with AWS Bedrock", "success")
         else:
-            st.warning("⚠️ AI services not configured. Add AWS credentials to .env file for full functionality.")
-            st.info("💡 You can still use the app with mock data for demonstration purposes.")
+            info_box("Demo Mode - AI services not configured. Add AWS credentials to .env file for full functionality.", "warning")
+            info_box("You can still explore - All features work with mock data for demonstration purposes.", "info")
+        
+        spacing("md")
+        
+        if st.button("Upload Code Now", type="primary"):
+            st.session_state.current_page = "Upload Code"
+            st.rerun()
+        
+        spacing("2xl")
+        
+        # Quick stats - minimal version
+        st.markdown("""
+        <div style="background: #F9F9F9; border: 1px solid #E5E5E5; border-radius: 6px; padding: 32px; text-align: center;">
+            <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 24px;">Supported Technologies</h3>
+            <div style="display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;">
+                <div>
+                    <div style="font-size: 32px; font-weight: 600; color: #1A1A1A;">10+</div>
+                    <div style="font-size: 13px; color: #666666;">Languages</div>
+                </div>
+                <div>
+                    <div style="font-size: 32px; font-weight: 600; color: #1A1A1A;">5</div>
+                    <div style="font-size: 13px; color: #666666;">Learning Paths</div>
+                </div>
+                <div>
+                    <div style="font-size: 32px; font-weight: 600; color: #1A1A1A;">3</div>
+                    <div style="font-size: 13px; color: #666666;">Languages (UI)</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     elif page == "Upload Code":
         render_code_upload()

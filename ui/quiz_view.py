@@ -1,10 +1,11 @@
 """Quiz interface component."""
 import streamlit as st
+from ui.design_system import section_header, spacing, info_box
 
 
 def render_quiz_view():
     """Render quiz interface."""
-    st.title("📝 Interactive Quizzes")
+    st.markdown("# Interactive Quizzes")
     
     # Initialize quiz state
     if "quiz_started" not in st.session_state:
@@ -22,7 +23,7 @@ def render_quiz_view():
 
 def _render_quiz_selection():
     """Render quiz topic selection."""
-    st.markdown("### Choose a Quiz Topic")
+    section_header("Choose a Quiz Topic")
     
     quiz_topics = {
         "React Basics": {"questions": 10, "difficulty": "Beginner", "time": 15},
@@ -39,9 +40,9 @@ def _render_quiz_selection():
             with col1:
                 st.markdown(f"**{topic}**")
             with col2:
-                st.caption(f"📊 {info['difficulty']}")
+                st.caption(f"{info['difficulty']}")
             with col3:
-                st.caption(f"❓ {info['questions']} Qs")
+                st.caption(f"{info['questions']} Questions")
             with col4:
                 if st.button("Start", key=f"start_{topic}", use_container_width=True):
                     # Generate quiz using QuizEngine

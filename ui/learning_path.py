@@ -1,40 +1,31 @@
 """Learning path view component."""
 import streamlit as st
+from ui.design_system import section_header, spacing, info_box
 
 
 def render_learning_path():
     """Render learning path interface."""
-    st.title("🛤️ Learning Paths")
+    st.markdown("# Learning Paths")
     
     # Get path manager and progress tracker
     path_manager = st.session_state.get("path_manager")
     progress_tracker = st.session_state.get("progress_tracker")
     
     if not path_manager:
-        st.warning("⚠️ Learning path manager not initialized. Please restart the app.")
+        info_box("Learning path manager not initialized. Please restart the app.", "warning")
         return
     
     # Path selection
-    st.markdown("### Choose Your Learning Journey")
+    section_header("Choose Your Learning Journey")
     
     # Get available paths from manager
     available_paths = path_manager.get_available_paths()
-    
-    # Create path options with icons
-    path_icons = {
-        "DSA Fundamentals": "🧮",
-        "Backend Development": "⚙️",
-        "Frontend Development": "🎨",
-        "Full-Stack Development": "🚀",
-        "AWS Services": "☁️"
-    }
     
     path_options = {path.name: path for path in available_paths}
     
     selected_path_name = st.selectbox(
         "Select a Learning Path",
-        options=list(path_options.keys()),
-        format_func=lambda x: f"{path_icons.get(x, '📚')} {x}"
+        options=list(path_options.keys())
     )
     
     selected_path = path_options[selected_path_name]
