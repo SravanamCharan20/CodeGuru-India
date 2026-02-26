@@ -17,6 +17,7 @@ An AI-powered code learning platform designed to help Indian developers learn fa
 
 - Python 3.9 or higher
 - pip package manager
+- AWS Account (optional - for AI features)
 
 ### Installation
 
@@ -31,7 +32,7 @@ cd codeguru-india
 pip install -r requirements.txt
 ```
 
-3. Set up environment variables:
+3. Set up environment variables (optional for AI features):
 ```bash
 cp .env.example .env
 # Edit .env with your AWS credentials
@@ -43,6 +44,16 @@ streamlit run app.py
 ```
 
 5. Open your browser and navigate to `http://localhost:8501`
+
+### Running Without AWS Credentials
+
+The app works perfectly without AWS credentials! It will:
+- Use mock AI responses for demonstrations
+- Still perform code structure analysis
+- Show all UI features and interactions
+- Display helpful messages about enabling AI features
+
+To enable full AI capabilities, add your AWS Bedrock credentials to the `.env` file.
 
 ## 📁 Project Structure
 
@@ -68,8 +79,9 @@ codeguru-india/
 
 ## 🎯 Current Status
 
-### ✅ Completed (UI/UX Phase)
+### ✅ Completed (Phase 1 & 2)
 
+**UI/UX Phase:**
 - Project setup and configuration
 - Session management
 - Main application structure with routing
@@ -81,15 +93,26 @@ codeguru-india/
 - Flashcard system with flip animation
 - Progress dashboard with metrics and charts
 
+**Backend Integration Phase:**
+- AWS Bedrock client with retry logic and error handling
+- Prompt management system with multi-language support
+- LangChain orchestrator for AI operations
+- Code analyzer with AST parsing (Python) and regex (JavaScript/TypeScript)
+- Real-time code analysis integration
+- AI-powered code explanations and summaries
+- Issue detection and pattern recognition
+- Mock data fallback when AWS credentials not configured
+
 ### 🚧 Next Steps
 
-The UI is complete with mock data. Next phases will integrate:
-- AWS Bedrock for AI-powered explanations
-- LangChain for LLM orchestration
-- Real code analysis and debugging
-- Voice processing with accent support
-- Diagram generation
-- Progress persistence
+Future enhancements will include:
+- Voice processing with AWS Transcribe
+- Diagram generation with Mermaid
+- Repository analyzer for GitHub integration
+- Quiz and flashcard generation with AI
+- Progress persistence with local storage
+- Learning path recommendations
+- Framework-specific insights (React, Node.js, AWS)
 
 ## 🛠️ Tech Stack
 

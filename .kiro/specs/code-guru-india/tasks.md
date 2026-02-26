@@ -160,7 +160,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
   - Ensure all tests pass, ask the user if questions arise
 
 - [ ] 11. AWS Bedrock client setup
-  - [ ] 11.1 Create ai/bedrock_client.py with BedrockClient class
+  - [x] 11.1 Create ai/bedrock_client.py with BedrockClient class
     - Implement __init__ with AWS configuration
     - Implement invoke_model() method with error handling
     - Implement invoke_model_with_streaming() method
@@ -174,7 +174,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
     - _Requirements: NFR-3_
 
 - [ ] 12. Prompt management system
-  - [ ] 12.1 Create ai/prompt_templates.py with PromptManager class
+  - [x] 12.1 Create ai/prompt_templates.py with PromptManager class
     - Implement get_code_explanation_prompt() with language support
     - Implement get_analogy_generation_prompt() with cultural context
     - Implement get_quiz_generation_prompt()
@@ -189,7 +189,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
     - _Requirements: 1.3, 6.2_
 
 - [ ] 13. LangChain orchestration layer
-  - [ ] 13.1 Create ai/langchain_orchestrator.py with LangChainOrchestrator class
+  - [x] 13.1 Create ai/langchain_orchestrator.py with LangChainOrchestrator class
     - Implement generate_completion() method
     - Implement generate_with_chain() for different chain types
     - Implement generate_structured_output() with schema validation
@@ -204,7 +204,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
     - _Requirements: NFR-3_
 
 - [ ] 14. Code analyzer implementation
-  - [ ] 14.1 Create analyzers/code_analyzer.py with CodeAnalyzer class
+  - [x] 14.1 Create analyzers/code_analyzer.py with CodeAnalyzer class
     - Implement analyze_file() method
     - Implement extract_structure() using AST parsing
     - Implement identify_patterns() using LangChain
@@ -269,7 +269,7 @@ This implementation plan follows a UI-first approach, building out the Streamlit
     - **Validates: Requirements 6.5**
 
 - [ ] 17. Integrate code analysis with upload UI
-  - [ ] 17.1 Wire CodeAnalyzer to code upload interface
+  - [x] 17.1 Wire CodeAnalyzer to code upload interface
     - Replace placeholder with actual analyze_file() call
     - Display real analysis results in explanation view
     - Handle loading states and errors

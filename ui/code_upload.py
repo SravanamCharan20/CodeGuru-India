@@ -93,9 +93,29 @@ def render_code_upload():
     if st.button("🚀 Analyze Code", type="primary", use_container_width=True):
         if session_manager.get_uploaded_code() or repo_url:
             with st.spinner("🔍 Analyzing your code..."):
-                import time
-                time.sleep(1)  # Simulate processing
-                st.success("✅ Analysis complete! View results in the Explanations tab.")
+                # Get the analyzer from session state
+                if "code_analyzer" in st.session_state:
+                    code = session_manager.get_uploaded_code()
+                    filename = st.session_state.get("uploaded_filename", "code.py")
+                    language = session_manager.get_language_preference()
+                    
+                    try:
+                        # Perform actual analysis
+                        analysis = st.session_state.code_analyzer.analyze_file(
+                            code=code,
+                            filename=filename,
+                            language=language
+                        )
+                        
+                        # Store analysis in session
+                        st.session_state.current_analysis = analysis
+                        st.success("✅ Analysis complete! View results in the Explanations tab.")
+                    except Exception as e:
+                        st.error(f"❌ Analysis failed: {str(e)}")
+                        st.info("💡 Showing mock data instead. Configure AWS credentials for real analysis.")
+                else:
+                    st.info("💡 Showing mock data. Configure AWS credentials for real AI analysis.")
+                
                 st.session_state.current_page = "Explanations"
                 st.rerun()
         else:
