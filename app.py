@@ -153,6 +153,35 @@ def initialize_backend_services():
             flashcard_manager = FlashcardManager(st.session_state.session_manager)
             repo_analyzer = RepoAnalyzer(code_analyzer)
             
+            # Initialize intent-driven analysis components
+            from analyzers.intent_interpreter import IntentInterpreter
+            from analyzers.file_selector import FileSelector
+            from analyzers.multi_file_analyzer import MultiFileAnalyzer
+            from analyzers.repository_manager import RepositoryManager
+            from generators.learning_artifact_generator import LearningArtifactGenerator
+            from learning.traceability_manager import TraceabilityManager
+            from analyzers.intent_driven_orchestrator import IntentDrivenOrchestrator
+            
+            intent_interpreter = IntentInterpreter(orchestrator)
+            file_selector = FileSelector(orchestrator)
+            multi_file_analyzer = MultiFileAnalyzer(code_analyzer, orchestrator)
+            repository_manager = RepositoryManager(repo_analyzer, max_size_mb=100)
+            learning_artifact_generator = LearningArtifactGenerator(
+                flashcard_manager,
+                quiz_engine,
+                orchestrator
+            )
+            traceability_manager = TraceabilityManager(st.session_state.session_manager)
+            intent_driven_orchestrator = IntentDrivenOrchestrator(
+                repository_manager,
+                intent_interpreter,
+                file_selector,
+                multi_file_analyzer,
+                learning_artifact_generator,
+                traceability_manager,
+                st.session_state.session_manager
+            )
+            
             # Store in session state
             st.session_state.bedrock_client = bedrock_client
             st.session_state.prompt_manager = prompt_manager
@@ -166,6 +195,16 @@ def initialize_backend_services():
             st.session_state.progress_tracker = progress_tracker
             st.session_state.flashcard_manager = flashcard_manager
             st.session_state.repo_analyzer = repo_analyzer
+            
+            # Intent-driven analysis components
+            st.session_state.intent_interpreter = intent_interpreter
+            st.session_state.file_selector = file_selector
+            st.session_state.multi_file_analyzer = multi_file_analyzer
+            st.session_state.repository_manager = repository_manager
+            st.session_state.learning_artifact_generator = learning_artifact_generator
+            st.session_state.traceability_manager = traceability_manager
+            st.session_state.intent_driven_orchestrator = intent_driven_orchestrator
+            
             st.session_state.backend_initialized = True
             
         except Exception as e:
@@ -283,6 +322,14 @@ def route_to_page(page: str):
     
     elif page == "Upload Code":
         render_code_upload()
+    elif page == "Repository Analysis":
+        from ui.intent_driven_analysis_page import render_intent_driven_analysis_page
+        render_intent_driven_analysis_page(
+            st.session_state.intent_driven_orchestrator,
+            st.session_state.repository_manager,
+            st.session_state.intent_interpreter,
+            st.session_state.session_manager
+        )
     elif page == "Explanations":
         render_explanation_view()
     elif page == "Learning Paths":

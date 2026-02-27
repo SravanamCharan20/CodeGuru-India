@@ -4,12 +4,23 @@ An AI-powered code learning platform designed to help Indian developers learn fa
 
 ## ✨ Features
 
+### Core Features
 - 🔍 **Smart Code Analysis** - Upload files or GitHub repositories for instant analysis
 - 🗣️ **Voice Queries** - Ask questions in English, Hindi, or Telugu
 - 📚 **Interactive Learning** - Flashcards, quizzes, and structured learning paths
 - 📊 **Progress Tracking** - Monitor your growth with detailed analytics
 - 🎯 **Simple Analogies** - Complex concepts explained with culturally relevant examples
 - 📈 **Visual Diagrams** - Auto-generated flowcharts, class diagrams, and architecture views
+
+### 🧠 Intent-Driven Repository Analysis (NEW!)
+- 🎯 **Natural Language Goals** - Describe what you want to learn in plain language
+- 🤖 **AI-Powered Intent Understanding** - System interprets your learning goals automatically
+- 📁 **Smart File Selection** - Automatically identifies relevant files based on your intent
+- 🔗 **Multi-File Analysis** - Analyzes relationships, data flows, and patterns across files
+- 📝 **Code-Grounded Learning** - Every flashcard and quiz links directly to actual code
+- 🗺️ **Personalized Learning Paths** - Ordered steps from foundational to advanced concepts
+- 🌐 **Multi-Language Support** - Generate materials in English, Hindi, or Telugu
+- 🔍 **Complete Traceability** - Track every concept back to its source code
 
 ## 🚀 Quick Start
 
@@ -59,60 +70,83 @@ To enable full AI capabilities, add your AWS Bedrock credentials to the `.env` f
 
 ```
 codeguru-india/
-├── app.py                      # Main application entry point
-├── config.py                   # Configuration management
-├── session_manager.py          # Session state management
-├── requirements.txt            # Python dependencies
+├── app.py                           # Main application entry point
+├── config.py                        # Configuration management
+├── session_manager.py               # Session state management
+├── requirements.txt                 # Python dependencies
 ├── .streamlit/
-│   └── config.toml            # Streamlit configuration
-├── ui/                        # UI components
-│   ├── sidebar.py             # Navigation sidebar
-│   ├── code_upload.py         # Code upload interface
-│   ├── explanation_view.py    # Code explanations view
-│   ├── learning_path.py       # Learning paths interface
-│   ├── quiz_view.py           # Quiz interface
-│   ├── flashcard_view.py      # Flashcard interface
-│   └── progress_dashboard.py  # Progress tracking dashboard
+│   └── config.toml                 # Streamlit configuration
+├── analyzers/                       # Analysis components
+│   ├── intent_interpreter.py       # Natural language intent understanding
+│   ├── file_selector.py            # Intent-driven file selection
+│   ├── multi_file_analyzer.py      # Multi-file code analysis
+│   ├── repository_manager.py       # Repository upload and validation
+│   └── intent_driven_orchestrator.py # Workflow orchestration
+├── generators/                      # Learning artifact generators
+│   └── learning_artifact_generator.py # Flashcards, quizzes, paths
+├── learning/                        # Learning components
+│   └── traceability_manager.py     # Code-artifact traceability
+├── models/                          # Data models
+│   └── intent_models.py            # Intent and artifact models
+├── ui/                             # UI components
+│   ├── sidebar.py                  # Navigation sidebar
+│   ├── repository_upload.py        # Repository upload interface
+│   ├── intent_input.py             # Learning goal input
+│   ├── learning_artifacts_dashboard.py # Learning materials view
+│   └── intent_driven_analysis_page.py  # Main analysis workflow
+├── utils/                          # Utilities
+│   └── error_handling.py           # Error handling and validation
+├── tests/                          # Test suite
+│   └── integration/                # Integration tests
+├── docs/                           # Documentation
+│   ├── API_REFERENCE.md            # API documentation
+│   └── USER_GUIDE.md               # User guide
 └── .kiro/
-    └── specs/                 # Feature specifications
+    └── specs/                      # Feature specifications
 ```
 
 ## 🎯 Current Status
 
-### ✅ Completed (Phase 1 & 2)
+### ✅ Completed Features
 
-**UI/UX Phase:**
+**Phase 1 & 2: Core Platform**
 - Project setup and configuration
-- Session management
+- Session management with persistence
 - Main application structure with routing
 - Sidebar navigation with language selector
 - Code upload interface (file, GitHub, voice)
-- Code explanation view with tabs (Summary, Details, Diagrams, Issues)
-- Learning paths with roadmap visualization
-- Interactive quiz interface with multiple question types
-- Flashcard system with flip animation
-- Progress dashboard with metrics and charts
+- Code explanation view with tabs
+- Interactive quiz and flashcard interfaces
+- Progress dashboard with metrics
 
-**Backend Integration Phase:**
-- AWS Bedrock client with retry logic and error handling
-- Prompt management system with multi-language support
-- LangChain orchestrator for AI operations
-- Code analyzer with AST parsing (Python) and regex (JavaScript/TypeScript)
-- Real-time code analysis integration
-- AI-powered code explanations and summaries
-- Issue detection and pattern recognition
-- Mock data fallback when AWS credentials not configured
+**Phase 3: Intent-Driven Analysis (NEW!)**
+- ✅ Natural language intent interpretation
+- ✅ AI-powered intent understanding with clarification
+- ✅ Intent-driven file selection with relevance scoring
+- ✅ Multi-file analysis with relationship detection
+- ✅ Dependency graph construction
+- ✅ Data flow and execution path analysis
+- ✅ Cross-file pattern detection
+- ✅ Code-grounded flashcard generation
+- ✅ Code-grounded quiz generation
+- ✅ Personalized learning path generation
+- ✅ Concept summary with categorization
+- ✅ Complete code traceability system
+- ✅ Multi-language support (English, Hindi, Telugu)
+- ✅ Repository upload (GitHub, ZIP, folder)
+- ✅ Session persistence across analyses
+- ✅ Error handling and validation
+- ✅ Integration test suite
+- ✅ Comprehensive documentation
 
-### 🚧 Next Steps
+### 🚧 Future Enhancements
 
-Future enhancements will include:
 - Voice processing with AWS Transcribe
 - Diagram generation with Mermaid
-- Repository analyzer for GitHub integration
-- Quiz and flashcard generation with AI
-- Progress persistence with local storage
-- Learning path recommendations
-- Framework-specific insights (React, Node.js, AWS)
+- Parser/serializer detection and round-trip properties
+- Property-based testing for all components
+- Advanced framework-specific insights
+- Collaborative learning features
 
 ## 🛠️ Tech Stack
 
@@ -123,49 +157,47 @@ Future enhancements will include:
 
 ## 📖 Usage
 
-### Upload Code
+### Quick Start: Intent-Driven Analysis
 
-1. Navigate to "Upload Code" from the sidebar
-2. Choose upload method:
-   - Upload a code file (.py, .js, .ts, etc.)
-   - Enter a GitHub repository URL
-   - Use voice input (coming soon)
-3. Click "Analyze Code"
+1. **Upload Repository**
+   - Navigate to "Repository Analysis" in sidebar
+   - Choose: GitHub URL, ZIP file, or local folder
+   - Supported: Python, JavaScript, TypeScript, Java, C++, Go, Ruby
 
-### View Explanations
+2. **Describe Your Learning Goal**
+   - Use natural language: "I want to learn how authentication works"
+   - Select your language: English, Hindi, or Telugu
+   - System interprets your intent automatically
 
-- **Summary**: High-level overview with key concepts and analogies
-- **Details**: In-depth explanations with code examples
-- **Diagrams**: Visual representations (flowcharts, class diagrams)
-- **Issues**: Detected bugs and suggestions
+3. **Review Analysis**
+   - System selects relevant files
+   - Analyzes code relationships and patterns
+   - Generates personalized learning materials
 
-### Learning Paths
+4. **Learn with Generated Materials**
+   - **Concept Summary**: Overview of key concepts
+   - **Flashcards**: Question-answer pairs with code evidence
+   - **Quizzes**: Multiple choice questions with explanations
+   - **Learning Path**: Ordered steps from basic to advanced
 
-1. Select a learning path (DSA, Backend, Frontend, Full-Stack, AWS)
-2. View your progress and roadmap
-3. Start available topics
-4. Complete quizzes to unlock advanced topics
+### Traditional Code Analysis
 
-### Take Quizzes
+1. **Upload Code**
+   - Navigate to "Upload Code" from sidebar
+   - Upload file, GitHub URL, or use voice input
+   - Click "Analyze Code"
 
-1. Choose a quiz topic
-2. Answer multiple choice, code completion, or debugging questions
-3. Get immediate feedback and explanations
-4. Track your scores over time
+2. **View Explanations**
+   - Summary, details, diagrams, and issues
+   - AI-powered insights and suggestions
 
-### Review Flashcards
+3. **Learning Paths**
+   - Follow structured learning roadmaps
+   - Complete quizzes to unlock topics
 
-1. Filter by topic and difficulty
-2. Flip cards to reveal answers
-3. Rate difficulty (Easy, Medium, Hard)
-4. Mark cards as reviewed or mastered
-
-### Track Progress
-
-- View key metrics (topics completed, quiz scores, streak)
-- Monitor skill levels for different technologies
-- Review weekly summaries
-- Earn achievement badges
+4. **Track Progress**
+   - Monitor metrics and achievements
+   - Review weekly summaries
 
 ## 🌐 Language Support
 
@@ -174,7 +206,39 @@ CodeGuru India supports three languages:
 - 🇮🇳 हिंदी (Hindi)
 - 🇮🇳 తెలుగు (Telugu)
 
-Switch languages anytime from the sidebar.
+Switch languages anytime from the sidebar. All learning materials (flashcards, quizzes, learning paths) can be generated in your preferred language while keeping code snippets in their original language.
+
+## 📚 Documentation
+
+- **[User Guide](docs/USER_GUIDE.md)** - Complete guide for using the platform
+- **[API Reference](docs/API_REFERENCE.md)** - API documentation for developers
+- **[Quick Start](INTENT_DRIVEN_QUICKSTART.md)** - Get started with intent-driven analysis
+- **[Implementation Status](INTENT_DRIVEN_IMPLEMENTATION_STATUS.md)** - Feature completion status
+
+## 🧪 Testing
+
+Run the test suite:
+
+```bash
+# Run all tests
+pytest
+
+# Run integration tests
+pytest tests/integration/
+
+# Run with verbose output
+pytest -v
+
+# Run specific test file
+pytest tests/integration/test_end_to_end_flow.py
+```
+
+Test coverage includes:
+- End-to-end workflow tests
+- AI integration tests
+- Session persistence tests
+- Multi-language support tests
+- Error handling tests
 
 ## 🤝 Contributing
 

@@ -96,20 +96,30 @@ class LangChainOrchestrator:
                     topic=inputs.get("topic", ""),
                     difficulty=inputs.get("difficulty", "intermediate"),
                     num_questions=inputs.get("num_questions", 5),
-                    language=inputs.get("language", "english")
+                    language=inputs.get("language", "english"),
+                    code_context=inputs.get("code_context", "")
                 )
             
             elif chain_type == "flashcard_generation":
                 prompt = self.prompt_manager.get_flashcard_generation_prompt(
                     code_concepts=inputs.get("concepts", []),
-                    language=inputs.get("language", "english")
+                    language=inputs.get("language", "english"),
+                    difficulty=inputs.get("difficulty", "intermediate")
                 )
             
             elif chain_type == "learning_path":
                 prompt = self.prompt_manager.get_learning_path_prompt(
                     path_name=inputs.get("path_name", ""),
                     current_level=inputs.get("current_level", "beginner"),
-                    language=inputs.get("language", "english")
+                    language=inputs.get("language", "english"),
+                    concepts=inputs.get("concepts", [])
+                )
+            
+            elif chain_type == "concept_summary":
+                prompt = self.prompt_manager.get_concept_summary_prompt(
+                    concepts=inputs.get("concepts", []),
+                    language=inputs.get("language", "english"),
+                    intent=inputs.get("intent", "")
                 )
             
             elif chain_type == "framework_specific":
@@ -147,33 +157,83 @@ class LangChainOrchestrator:
             # Add schema instructions to prompt
             schema_prompt = f"""{prompt}
 
-IMPORTANT: Respond with valid JSON matching this schema:
-{json.dumps(output_schema, indent=2)}
+CRITICAL INSTRUCTIONS:
+1. Respond ONLY with valid JSON
+2. Do NOT include any text before or after the JSON
+3. Do NOT include markdown code blocks
+4. Start your response with {{ and end with }}
 
-Ensure your response is valid JSON that can be parsed."""
+Expected JSON schema:
+{json.dumps(output_schema, indent=2)}"""
             
-            response = self.generate_completion(schema_prompt)
+            response = self.generate_completion(schema_prompt, max_tokens=2000)
             
-            # Try to extract JSON from response
+            # Try multiple strategies to extract JSON
+            parsed_json = None
+            
+            # Strategy 1: Try to find JSON between curly braces
             try:
-                # Look for JSON in response
                 start_idx = response.find('{')
                 end_idx = response.rfind('}') + 1
                 
                 if start_idx != -1 and end_idx > start_idx:
                     json_str = response[start_idx:end_idx]
-                    return json.loads(json_str)
-                else:
-                    # Try parsing entire response
-                    return json.loads(response)
+                    parsed_json = json.loads(json_str)
+                    logger.info("Successfully parsed JSON using strategy 1 (curly braces)")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.debug(f"Strategy 1 failed: {e}")
             
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse JSON from response, returning raw text")
-                return {"raw_response": response}
+            # Strategy 2: Try to find JSON between square brackets (for arrays)
+            if not parsed_json:
+                try:
+                    start_idx = response.find('[')
+                    end_idx = response.rfind(']') + 1
+                    
+                    if start_idx != -1 and end_idx > start_idx:
+                        json_str = response[start_idx:end_idx]
+                        parsed_json = json.loads(json_str)
+                        logger.info("Successfully parsed JSON using strategy 2 (square brackets)")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.debug(f"Strategy 2 failed: {e}")
+            
+            # Strategy 3: Try to parse entire response
+            if not parsed_json:
+                try:
+                    parsed_json = json.loads(response)
+                    logger.info("Successfully parsed entire response as JSON")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.debug(f"Strategy 3 failed: {e}")
+            
+            # Strategy 4: Try to remove markdown code blocks
+            if not parsed_json:
+                try:
+                    # Remove ```json and ``` markers
+                    cleaned = response.replace('```json', '').replace('```', '').strip()
+                    parsed_json = json.loads(cleaned)
+                    logger.info("Successfully parsed JSON after removing markdown")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.debug(f"Strategy 4 failed: {e}")
+            
+            if parsed_json:
+                return parsed_json
+            
+            # All strategies failed
+            logger.error(f"All JSON parsing strategies failed")
+            logger.debug(f"Response that failed to parse: {response[:500]}")
+            return {
+                "error": "Failed to parse JSON response",
+                "error_type": "json_decode_error",
+                "raw_response": response[:500],
+                "message": "The AI response was not in valid JSON format. Using fallback generation."
+            }
         
         except Exception as e:
             logger.error(f"Structured output generation failed: {e}")
-            return {"error": str(e)}
+            return {
+                "error": str(e),
+                "error_type": "generation_error",
+                "message": "Failed to generate structured output"
+            }
     
     def explain_code(
         self,

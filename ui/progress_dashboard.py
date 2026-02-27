@@ -114,7 +114,7 @@ def _render_progress_charts():
 
 def _render_skill_levels(skill_levels: dict = None):
     """Render skill level progress bars."""
-    create_section_header("🎯 Skill Levels", "Your expertise across technologies")
+    section_header("🎯 Skill Levels", "Your expertise across technologies")
     
     if skill_levels and len(skill_levels) > 0:
         skills = skill_levels
@@ -154,7 +154,7 @@ def _render_skill_levels(skill_levels: dict = None):
             """, unsafe_allow_html=True)
             st.progress(level / 100)
             st.caption(_get_skill_label(level))
-            add_spacing("small")
+            spacing("sm")
 
 
 def _get_skill_label(level):
@@ -171,7 +171,7 @@ def _get_skill_label(level):
 
 def _render_weekly_summary(progress_tracker=None):
     """Render weekly summary."""
-    create_section_header("📅 This Week's Summary", "Your recent achievements")
+    section_header("📅 This Week's Summary", "Your recent achievements")
     
     col1, col2 = st.columns(2)
     
@@ -233,7 +233,7 @@ def _render_weekly_summary(progress_tracker=None):
 
 def _render_achievements():
     """Render achievement badges."""
-    create_section_header("🏆 Achievement Badges", "Celebrate your milestones")
+    section_header("🏆 Achievement Badges", "Celebrate your milestones")
     
     achievements = [
         {"name": "First Steps", "icon": "🎯", "earned": True, "date": "Jan 15, 2024", "desc": "Complete your first topic"},
@@ -282,4 +282,4 @@ def _render_achievements():
                 </div>
                 """, unsafe_allow_html=True)
             
-            add_spacing("small")
+            spacing("sm")

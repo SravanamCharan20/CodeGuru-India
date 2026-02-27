@@ -47,6 +47,7 @@ def render_sidebar() -> str:
         pages = [
             ("Home", "🏠"),
             ("Upload Code", "📤"),
+            ("Repository Analysis", "🧠"),
             ("Explanations", "📖"),
             ("Learning Paths", "🗺️"),
             ("Quizzes", "📝"),
@@ -62,7 +63,6 @@ def render_sidebar() -> str:
             if st.button(
                 f"{icon} {page_name}",
                 key=f"nav_{page_name}",
-                use_container_width=True,
                 type=button_type
             ):
                 st.session_state.current_page = page_name

@@ -76,10 +76,15 @@ Make it memorable and easy to understand!"""
         topic: str,
         difficulty: str,
         num_questions: int,
-        language: str
+        language: str,
+        code_context: str = ""
     ) -> str:
         """Get prompt for quiz generation."""
         lang_instruction = self.language_instructions.get(language, self.language_instructions["english"])
+        
+        code_section = ""
+        if code_context:
+            code_section = f"\nBase questions on this code context:\n```\n{code_context}\n```\n"
         
         return f"""You are CodeGuru India, creating educational quizzes for developers.
 
@@ -87,16 +92,20 @@ Make it memorable and easy to understand!"""
 
 Generate {num_questions} quiz questions about: {topic}
 Difficulty level: {difficulty}
+{code_section}
 
 For each question, provide:
-1. Question text
+1. Question text (in {language})
 2. Question type (multiple_choice, code_completion, or debugging)
-3. Options (for multiple choice)
+3. Options (for multiple choice) - 4 options
 4. Correct answer
-5. Detailed explanation
+5. Detailed explanation (why the answer is correct and others are wrong)
 
-Make questions practical and relevant to real-world coding scenarios.
-Include examples from popular Indian tech stacks (React, Node.js, AWS, MongoDB).
+IMPORTANT:
+- Keep all code snippets in their original programming language
+- Questions must be grounded in the actual code provided
+- Make questions practical and relevant to real-world coding scenarios
+- Include culturally relevant examples when helpful
 
 Format as JSON array."""
     
@@ -153,12 +162,19 @@ Keep it brief but informative!"""
     def get_flashcard_generation_prompt(
         self,
         code_concepts: list,
-        language: str
+        language: str,
+        difficulty: str = "intermediate"
     ) -> str:
         """Get prompt for flashcard generation."""
         lang_instruction = self.language_instructions.get(language, self.language_instructions["english"])
         
         concepts_text = "\n".join([f"- {concept}" for concept in code_concepts])
+        
+        difficulty_note = {
+            "beginner": "Use simple language and basic examples.",
+            "intermediate": "Include technical details with clear explanations.",
+            "advanced": "Use advanced terminology and in-depth concepts."
+        }.get(difficulty.lower(), "")
         
         return f"""You are CodeGuru India, creating learning flashcards.
 
@@ -167,11 +183,14 @@ Keep it brief but informative!"""
 Create flashcards for these programming concepts:
 {concepts_text}
 
+Difficulty level: {difficulty}
+{difficulty_note}
+
 For each flashcard, provide:
 1. Front: A clear question or concept name
-2. Back: A concise, memorable answer or explanation
-3. Topic category
-4. Difficulty level (beginner, intermediate, advanced)
+2. Back: A concise, memorable answer or explanation (2-3 sentences max)
+3. Include culturally relevant analogies when helpful
+4. Keep code snippets in original language
 
 Make them perfect for quick review and spaced repetition learning!
 
@@ -181,10 +200,15 @@ Format as JSON array."""
         self,
         path_name: str,
         current_level: str,
-        language: str
+        language: str,
+        concepts: list = None
     ) -> str:
         """Get prompt for learning path recommendations."""
         lang_instruction = self.language_instructions.get(language, self.language_instructions["english"])
+        
+        concepts_section = ""
+        if concepts:
+            concepts_section = f"\nConcepts to cover:\n" + "\n".join([f"- {c}" for c in concepts])
         
         return f"""You are CodeGuru India, guiding developers through learning paths.
 
@@ -192,19 +216,27 @@ Format as JSON array."""
 
 Learning Path: {path_name}
 Current Level: {current_level}
+{concepts_section}
 
-Recommend the next topic to learn, considering:
-1. Prerequisites already completed
-2. Logical progression
+Create a structured learning path with ordered steps, considering:
+1. Prerequisites and logical progression (foundational to advanced)
+2. Dependencies between concepts
 3. Practical relevance for Indian tech industry
-4. Popular tech stacks (MERN, AWS, etc.)
+4. Estimated time for each step
 
-Provide:
-- Next topic name
-- Why it's important
-- What they'll learn
-- Estimated time to complete
-- Resources or tips"""
+For each step, provide:
+- Step title (in {language})
+- Description of what will be learned
+- Estimated time in minutes
+- Concepts covered
+- Prerequisites (previous step IDs)
+
+IMPORTANT:
+- Keep code examples in original programming language
+- Order steps from basic to advanced
+- Each step should build on previous ones
+
+Format as JSON array of steps."""
     
     def get_framework_specific_prompt(
         self,
@@ -246,3 +278,40 @@ Provide:
 6. Relevance to Indian tech industry (e-commerce, fintech, etc.)
 
 Include practical examples!"""
+    
+    def get_concept_summary_prompt(
+        self,
+        concepts: list,
+        language: str,
+        intent: str = ""
+    ) -> str:
+        """Get prompt for concept summary generation."""
+        lang_instruction = self.language_instructions.get(language, self.language_instructions["english"])
+        
+        concepts_text = "\n".join([f"- {c.get('name', 'Unknown')}: {c.get('description', '')}" for c in concepts])
+        
+        intent_section = ""
+        if intent:
+            intent_section = f"\nUser's learning goal: {intent}\nPrioritize concepts most relevant to this goal."
+        
+        return f"""You are CodeGuru India, summarizing code concepts for developers.
+
+{lang_instruction}
+
+Organize and summarize these programming concepts:
+{concepts_text}
+{intent_section}
+
+Provide:
+1. Categorized summary (group by: architecture, patterns, data_structures, algorithms, functions, classes)
+2. Top 5 most important concepts with brief explanations
+3. How concepts relate to each other
+4. Practical applications in real projects
+
+IMPORTANT:
+- Keep code references in original programming language
+- Focus only on concepts demonstrated in the actual code
+- Exclude generic concepts not shown in the code
+- Use culturally relevant analogies when helpful
+
+Format as structured JSON."""
