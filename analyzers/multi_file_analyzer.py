@@ -65,6 +65,16 @@ class MultiFileAnalyzer:
                 try:
                     file_path = os.path.join(repo_path, selection.file_info.path)
                     
+                    # Skip if it's a directory
+                    if os.path.isdir(file_path):
+                        logger.warning(f"Skipping directory: {file_path}")
+                        continue
+                    
+                    # Skip if file doesn't exist
+                    if not os.path.isfile(file_path):
+                        logger.warning(f"File not found: {file_path}")
+                        continue
+                    
                     # Read file content
                     with open(file_path, 'r', encoding='utf-8') as f:
                         code = f.read()

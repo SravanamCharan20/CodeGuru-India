@@ -89,7 +89,7 @@ def render_intent_input(intent_interpreter, session_manager, on_intent_confirmed
     
     # Show interpreted intent
     current_intent_data = session_manager.get_current_intent()
-    if current_intent_data:
+    if current_intent_data and current_intent_data.get('intent'):
         intent = current_intent_data['intent']
         
         st.divider()

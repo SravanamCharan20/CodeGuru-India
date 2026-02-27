@@ -116,72 +116,100 @@ def _render_analyze_step(orchestrator, session_manager):
     
     st.divider()
     
-    # Language selection (use from session if available)
-    default_language = st.session_state.get('selected_language', 'english')
-    language = st.selectbox(
-        "🌐 Output Language",
-        ["english", "hindi", "telugu"],
-        format_func=lambda x: {"english": "English", "hindi": "हिंदी", "telugu": "తెలుగు"}[x],
-        index=["english", "hindi", "telugu"].index(default_language),
-        help="Language for learning materials (flashcards, quizzes, learning paths)"
+    # Check if analysis is already complete
+    artifacts = session_manager.get_learning_artifacts()
+    analysis_complete = (
+        artifacts and 
+        (len(artifacts.get('flashcards', [])) > 0 or 
+         len(artifacts.get('quizzes', [])) > 0 or 
+         len(artifacts.get('learning_paths', [])) > 0)
     )
     
-    # Start analysis button
-    if st.button("🚀 Start Analysis", type="primary"):
-        with st.spinner("Analyzing repository... This may take a minute."):
-            try:
-                # Run complete analysis
-                result = orchestrator.analyze_repository_with_intent(
-                    repo_path=repo_data['repo_path'],
-                    user_input=intent.primary_intent,
-                    language=language
-                )
-                
-                if result.get('status') == 'success':
-                    st.success("✅ Analysis complete!")
-                    st.balloons()
+    if analysis_complete:
+        # Show results
+        st.success("✅ Analysis complete!")
+        
+        flashcards = artifacts.get('flashcards', [])
+        quizzes = artifacts.get('quizzes', [])
+        learning_paths = artifacts.get('learning_paths', [])
+        
+        st.write("**Generated:**")
+        st.write(f"- {len(flashcards)} flashcards")
+        st.write(f"- {len(quizzes[0].get('questions', [])) if quizzes else 0} quiz questions")
+        st.write(f"- {learning_paths[0].total_steps if learning_paths and hasattr(learning_paths[0], 'total_steps') else 0} learning steps")
+        
+        st.divider()
+        
+        # This button is OUTSIDE the analysis block, so it persists
+        if st.button("View Learning Materials →", type="primary", key="view_materials_btn"):
+            st.session_state.workflow_step = 'learn'
+            st.rerun()
+        
+        # Option to re-run analysis
+        if st.button("🔄 Re-run Analysis"):
+            session_manager.clear_current_analysis()
+            st.rerun()
+    
+    else:
+        # Language selection (use from session if available)
+        default_language = st.session_state.get('selected_language', 'english')
+        language = st.selectbox(
+            "🌐 Output Language",
+            ["english", "hindi", "telugu"],
+            format_func=lambda x: {"english": "English", "hindi": "हिंदी", "telugu": "తెలుగు"}[x],
+            index=["english", "hindi", "telugu"].index(default_language),
+            help="Language for learning materials (flashcards, quizzes, learning paths)"
+        )
+        
+        # Start analysis button
+        if st.button("🚀 Start Analysis", type="primary"):
+            with st.spinner("Analyzing repository... This may take a minute."):
+                try:
+                    # Run complete analysis
+                    result = orchestrator.analyze_repository_with_intent(
+                        repo_path=repo_data['repo_path'],
+                        user_input=intent.primary_intent,
+                        language=language
+                    )
                     
-                    # Show summary with error handling
-                    flashcards = result.get('flashcards', [])
-                    quiz = result.get('quiz', {})
-                    learning_path = result.get('learning_path', {})
-                    
-                    st.write("**Generated:**")
-                    st.write(f"- {len(flashcards)} flashcards")
-                    st.write(f"- {len(quiz.get('questions', []))} quiz questions")
-                    st.write(f"- {learning_path.get('total_steps', 0)} learning steps")
-                    
-                    # Check for partial failures
-                    if len(flashcards) == 0:
-                        st.warning("⚠️ No flashcards were generated. This may be due to AI response formatting issues.")
-                    if len(quiz.get('questions', [])) == 0:
-                        st.warning("⚠️ No quiz questions were generated. This may be due to AI response formatting issues.")
-                    if learning_path.get('total_steps', 0) == 0:
-                        st.warning("⚠️ No learning path was generated. This may be due to AI response formatting issues.")
-                    
-                    st.divider()
-                    
-                    if st.button("View Learning Materials →", type="primary"):
-                        st.session_state.workflow_step = 'learn'
+                    if result.get('status') == 'success':
+                        st.success("✅ Analysis complete!")
+                        st.balloons()
+                        
+                        # Show summary
+                        flashcards = result.get('flashcards', [])
+                        quiz = result.get('quiz', {})
+                        learning_path = result.get('learning_path')
+                        
+                        logger.info(f"Analysis result - Flashcards: {len(flashcards)}, Quiz questions: {len(quiz.get('questions', []))}, Learning path steps: {learning_path.total_steps if learning_path and hasattr(learning_path, 'total_steps') else 0}")
+                        
+                        st.write("**Generated:**")
+                        st.write(f"- {len(flashcards)} flashcards")
+                        st.write(f"- {len(quiz.get('questions', []))} quiz questions")
+                        st.write(f"- {learning_path.total_steps if learning_path and hasattr(learning_path, 'total_steps') else 0} learning steps")
+                        
+                        st.info("✨ Analysis saved! Click the button above to view your learning materials.")
+                        
+                        # Force rerun to show the "View Learning Materials" button
                         st.rerun()
+                    
+                    elif result.get('status') == 'clarification_needed':
+                        st.warning("Your intent needs clarification. Please go back and provide more details.")
+                    
+                    elif result.get('status') == 'no_files_found':
+                        st.error("No relevant files found for your learning goal.")
+                        suggestions = result.get('suggestions', [])
+                        if suggestions:
+                            st.write("**Try these instead:**")
+                            for suggestion in suggestions:
+                                st.write(f"- {suggestion}")
+                    
+                    else:
+                        st.error(f"Analysis failed: {result.get('error', 'Unknown error')}")
                 
-                elif result.get('status') == 'clarification_needed':
-                    st.warning("Your intent needs clarification. Please go back and provide more details.")
-                
-                elif result.get('status') == 'no_files_found':
-                    st.error("No relevant files found for your learning goal.")
-                    suggestions = result.get('suggestions', [])
-                    if suggestions:
-                        st.write("**Try these instead:**")
-                        for suggestion in suggestions:
-                            st.write(f"- {suggestion}")
-                
-                else:
-                    st.error(f"Analysis failed: {result.get('error', 'Unknown error')}")
-            
-            except Exception as e:
-                logger.error(f"Analysis failed: {e}")
-                st.error(f"Analysis failed: {str(e)}")
+                except Exception as e:
+                    logger.error(f"Analysis failed: {e}")
+                    st.error(f"Analysis failed: {str(e)}")
 
 
 def _render_learn_step(session_manager):
@@ -202,5 +230,4 @@ def _render_learn_step(session_manager):
     if st.button("🔄 Start New Analysis"):
         session_manager.clear_current_analysis()
         st.session_state.workflow_step = 'upload'
-        st.session_state.clear()
         st.rerun()

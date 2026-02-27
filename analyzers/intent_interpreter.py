@@ -51,31 +51,25 @@ class IntentInterpreter:
             UserIntent object with extracted information
         """
         try:
-            # Build context about repository
-            repo_info = self._build_repo_context(repo_context)
+            logger.info(f"Interpreting intent from user input: {user_input}")
             
-            # Create prompt for intent extraction
-            prompt = self._create_intent_extraction_prompt(user_input, repo_info)
+            # Use hybrid approach: rule-based + AI enhancement
+            # 1. Start with rule-based parsing (fast, reliable)
+            intent = self._parse_intent_rule_based(user_input, repo_context)
             
-            # Get structured output from AI
-            output_schema = {
-                "primary_intent": "string",
-                "secondary_intents": ["string"],
-                "scope_type": "string",
-                "target_paths": ["string"],
-                "exclude_paths": ["string"],
-                "audience_level": "string",
-                "technologies": ["string"],
-                "confidence": "float"
-            }
-            
-            response = self.orchestrator.generate_structured_output(
-                prompt=prompt,
-                output_schema=output_schema
-            )
-            
-            # Parse response into UserIntent
-            intent = self._parse_intent_response(response, user_input)
+            # 2. Enhance with AI-based keyword extraction (context-aware)
+            if self.orchestrator and repo_context:
+                try:
+                    ai_keywords = self._extract_keywords_with_ai(user_input, repo_context)
+                    # Store AI-extracted keywords in intent for file selector to use
+                    if not hasattr(intent, 'ai_keywords'):
+                        intent.ai_keywords = ai_keywords
+                    logger.info(f"AI extracted {len(ai_keywords)} additional keywords: {ai_keywords[:10]}")
+                except Exception as e:
+                    logger.warning(f"AI keyword extraction failed, using rule-based only: {e}")
+                    intent.ai_keywords = []
+            else:
+                intent.ai_keywords = []
             
             logger.info(f"Interpreted intent: {intent.primary_intent} (confidence: {intent.confidence_score})")
             return intent
@@ -144,61 +138,21 @@ class IntentInterpreter:
             Refined UserIntent with higher confidence
         """
         try:
-            # Combine original input with clarifications
-            combined_input = f"""
-Original goal: {intent.primary_intent if intent.primary_intent != 'unknown' else 'Not specified'}
-
-Additional clarifications:
-{json.dumps(user_responses, indent=2)}
-"""
+            # Combine all responses into one string
+            combined_input = " ".join(user_responses.values())
             
-            # Re-interpret with additional context
-            # Note: We need repo_context here, but for refinement we can use the existing scope
-            prompt = f"""Analyze this refined learning goal and extract structured intent:
-
-{combined_input}
-
-Previous interpretation:
-- Primary intent: {intent.primary_intent}
-- Scope: {intent.scope.scope_type if intent.scope else 'unknown'}
-- Audience level: {intent.audience_level}
-- Technologies: {', '.join(intent.technologies) if intent.technologies else 'none'}
-
-Based on the clarifications, provide an updated interpretation with higher confidence.
-
-Extract:
-1. Primary intent (one of: {', '.join(self.INTENT_CATEGORIES)})
-2. Secondary intents
-3. Scope (entire_repo, specific_folders, specific_files, technology)
-4. Target paths (if specific folders/files)
-5. Audience level (beginner, intermediate, advanced)
-6. Technologies mentioned
-7. Confidence score (0.0-1.0)
-
-Respond in JSON format."""
+            # Re-parse with combined input
+            refined_intent = self._parse_intent_rule_based(combined_input, None)
             
-            output_schema = {
-                "primary_intent": "string",
-                "secondary_intents": ["string"],
-                "scope_type": "string",
-                "target_paths": ["string"],
-                "exclude_paths": ["string"],
-                "audience_level": "string",
-                "technologies": ["string"],
-                "confidence": "float"
-            }
+            # Merge with original intent (keep non-empty values from original)
+            if intent.technologies and not refined_intent.technologies:
+                refined_intent.technologies = intent.technologies
             
-            response = self.orchestrator.generate_structured_output(
-                prompt=prompt,
-                output_schema=output_schema
-            )
+            if intent.scope and intent.scope.target_paths and not refined_intent.scope.target_paths:
+                refined_intent.scope.target_paths = intent.scope.target_paths
             
-            # Parse refined intent
-            refined_intent = self._parse_intent_response(response, combined_input)
-            
-            # Ensure confidence increased
-            if refined_intent.confidence_score <= intent.confidence_score:
-                refined_intent.confidence_score = min(intent.confidence_score + 0.2, 1.0)
+            # Increase confidence
+            refined_intent.confidence_score = min(refined_intent.confidence_score + 0.2, 1.0)
             
             logger.info(f"Refined intent confidence: {intent.confidence_score} -> {refined_intent.confidence_score}")
             return refined_intent
@@ -222,40 +176,31 @@ Respond in JSON format."""
         suggestions = []
         
         try:
-            repo_info = self._build_repo_context(repo_context)
+            # Provide generic but useful suggestions
+            suggestions = [
+                "Learn how the authentication system works",
+                "Understand the overall architecture and design patterns",
+                "Study the database models and relationships",
+                "Learn the API endpoints and request handling",
+                "Understand the frontend components and state management",
+                "Prepare for technical interviews on this codebase"
+            ]
             
-            prompt = f"""Based on this repository structure, suggest 3-5 learning goals a user might have:
-
-Repository Information:
-{repo_info}
-
-Provide specific, actionable learning goals that match the repository's content.
-For example:
-- "Learn how the authentication system works"
-- "Understand the React component architecture"
-- "Study the database models and relationships"
-
-Respond with a JSON array of suggestion strings."""
-            
-            response = self.orchestrator.generate_structured_output(
-                prompt=prompt,
-                output_schema={"suggestions": ["string"]}
-            )
-            
-            if "suggestions" in response:
-                suggestions = response["suggestions"][:5]  # Limit to 5
-            
+            # Customize based on repo context if available
+            if repo_context:
+                if hasattr(repo_context, 'frameworks') and repo_context.frameworks:
+                    for framework in repo_context.frameworks[:2]:
+                        suggestions.insert(0, f"Learn how {framework} is used in this project")
+        
         except Exception as e:
             logger.error(f"Intent suggestion failed: {e}")
-            # Provide generic suggestions
             suggestions = [
                 "Understand the overall architecture",
                 "Learn the main features and functionality",
-                "Study the code structure and patterns",
-                "Prepare for technical interviews"
+                "Study the code structure and patterns"
             ]
         
-        return suggestions
+        return suggestions[:5]  # Limit to 5
     
     # ========================================================================
     # Private Helper Methods
@@ -373,11 +318,205 @@ Respond in JSON format matching the schema."""
     
     def _create_default_intent(self, user_input: str) -> UserIntent:
         """Create default intent when parsing fails."""
-        return UserIntent(
+        intent = UserIntent(
             primary_intent="generate_learning_materials",
             secondary_intents=[],
             scope=IntentScope(scope_type="entire_repo", target_paths=[], exclude_paths=[]),
             audience_level="intermediate",
             technologies=[],
             confidence_score=0.3
+        )
+        intent.ai_keywords = []
+        return intent
+    
+    def _extract_keywords_with_ai(self, user_input: str, repo_context) -> List[str]:
+        """
+        Use AI to extract relevant keywords based on user input and repository context.
+        
+        Args:
+            user_input: User's learning goal
+            repo_context: Repository analysis with file structure
+            
+        Returns:
+            List of relevant keywords for file matching
+        """
+        try:
+            # Build repository context summary
+            repo_info = self._build_repo_context(repo_context)
+            
+            # Create prompt for AI keyword extraction
+            prompt = f"""Analyze this user's learning goal and the repository structure to extract relevant keywords for file matching.
+
+User's Learning Goal: "{user_input}"
+
+Repository Context:
+{repo_info}
+
+Task: Extract 10-15 specific keywords that would help identify relevant files in this repository.
+
+Guidelines:
+- Focus on technical terms, file names, folder names, and concepts mentioned
+- Include variations (e.g., "route" → "router", "routing", "routes")
+- Consider the repository's actual structure and technologies
+- Be specific to what the user wants to learn
+- Include both exact matches and related terms
+
+Example for "learn authentication":
+- Keywords: auth, authentication, login, user, password, session, token, jwt, signin, signup
+
+Example for "learn routing":
+- Keywords: route, router, routing, navigation, navigate, link, path, page, component
+
+Now extract keywords for: "{user_input}"
+
+Respond with ONLY a comma-separated list of keywords, nothing else.
+Example response: route, router, routing, navigation, link, path, page, app"""
+            
+            # Get AI response
+            response = self.orchestrator.generate_completion(prompt, max_tokens=200, temperature=0.3)
+            
+            # Parse keywords from response
+            keywords = []
+            # Clean up response - remove any extra text
+            response = response.strip()
+            
+            # Try to extract just the keyword list
+            lines = response.split('\n')
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and lines that look like explanations
+                if not line or line.startswith('#') or line.startswith('-') or len(line) > 200:
+                    continue
+                # This line likely contains keywords
+                if ',' in line:
+                    # Split by comma and clean
+                    parts = [p.strip().lower() for p in line.split(',')]
+                    keywords.extend([p for p in parts if p and len(p) > 1 and len(p) < 30])
+                    break
+            
+            # Fallback: if no keywords extracted, try splitting the whole response
+            if not keywords:
+                words = response.lower().replace(',', ' ').replace('.', ' ').split()
+                keywords = [w.strip() for w in words if len(w) > 2 and len(w) < 20][:15]
+            
+            logger.info(f"AI extracted keywords: {keywords}")
+            return keywords[:15]  # Limit to 15 keywords
+        
+        except Exception as e:
+            logger.error(f"AI keyword extraction failed: {e}")
+            return []
+    
+    def _parse_intent_rule_based(self, user_input: str, repo_context) -> UserIntent:
+        """
+        Parse intent using rule-based approach (no AI needed).
+        
+        Args:
+            user_input: User's learning goal
+            repo_context: Repository context
+            
+        Returns:
+            UserIntent object
+        """
+        user_input_lower = user_input.lower()
+        
+        # Detect primary intent based on keywords
+        primary_intent = "generate_learning_materials"  # default
+        confidence = 0.7
+        
+        if any(word in user_input_lower for word in ["authentication", "auth", "login", "signup", "register", "password"]):
+            primary_intent = "learn_specific_feature"
+            confidence = 0.9
+        elif any(word in user_input_lower for word in ["routing", "route", "router", "navigation"]):
+            primary_intent = "learn_specific_feature"
+            confidence = 0.9
+        elif any(word in user_input_lower for word in ["interview", "prepare", "preparation"]):
+            primary_intent = "interview_preparation"
+            confidence = 0.9
+        elif any(word in user_input_lower for word in ["architecture", "design", "structure", "pattern"]):
+            primary_intent = "architecture_understanding"
+            confidence = 0.9
+        elif any(word in user_input_lower for word in ["backend", "api", "database", "server"]):
+            primary_intent = "backend_flow_analysis"
+            confidence = 0.8
+        elif any(word in user_input_lower for word in ["frontend", "ui", "component", "react", "vue"]):
+            primary_intent = "frontend_flow_analysis"
+            confidence = 0.8
+        elif any(word in user_input_lower for word in ["flashcard", "quiz", "study", "learn", "understand"]):
+            primary_intent = "generate_learning_materials"
+            confidence = 0.8
+        
+        # Detect technologies
+        technologies = []
+        tech_keywords = {
+            "react": "React",
+            "vue": "Vue",
+            "angular": "Angular",
+            "node": "Node.js",
+            "express": "Express",
+            "django": "Django",
+            "flask": "Flask",
+            "fastapi": "FastAPI",
+            "spring": "Spring",
+            "jwt": "JWT",
+            "oauth": "OAuth",
+            "postgres": "PostgreSQL",
+            "mysql": "MySQL",
+            "mongodb": "MongoDB",
+            "redis": "Redis",
+            "docker": "Docker",
+            "kubernetes": "Kubernetes",
+            "aws": "AWS",
+            "azure": "Azure",
+            "gcp": "Google Cloud"
+        }
+        
+        for keyword, tech_name in tech_keywords.items():
+            if keyword in user_input_lower:
+                technologies.append(tech_name)
+        
+        # Detect audience level
+        audience_level = "intermediate"  # default
+        if any(word in user_input_lower for word in ["beginner", "new", "basic", "simple"]):
+            audience_level = "beginner"
+        elif any(word in user_input_lower for word in ["advanced", "expert", "deep", "detailed"]):
+            audience_level = "advanced"
+        
+        # Detect scope
+        scope_type = "entire_repo"
+        target_paths = []
+        
+        # Look for specific paths or folders mentioned
+        if "src/" in user_input_lower or "source/" in user_input_lower:
+            scope_type = "specific_folders"
+            target_paths.append("src")
+        if "models/" in user_input_lower or "model/" in user_input_lower:
+            scope_type = "specific_folders"
+            target_paths.append("models")
+        if "controllers/" in user_input_lower or "controller/" in user_input_lower:
+            scope_type = "specific_folders"
+            target_paths.append("controllers")
+        if "views/" in user_input_lower or "view/" in user_input_lower:
+            scope_type = "specific_folders"
+            target_paths.append("views")
+        if "components/" in user_input_lower or "component/" in user_input_lower:
+            scope_type = "specific_folders"
+            target_paths.append("components")
+        
+        # If technologies detected, might be technology-focused
+        if technologies and not target_paths:
+            scope_type = "technology"
+        
+        scope = IntentScope(
+            scope_type=scope_type,
+            target_paths=target_paths,
+            exclude_paths=[]
+        )
+        
+        return UserIntent(
+            primary_intent=primary_intent,
+            secondary_intents=[],
+            scope=scope,
+            audience_level=audience_level,
+            technologies=technologies,
+            confidence_score=confidence
         )

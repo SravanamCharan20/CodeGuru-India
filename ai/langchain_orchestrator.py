@@ -168,6 +168,12 @@ Expected JSON schema:
             
             response = self.generate_completion(schema_prompt, max_tokens=2000)
             
+            # Log the raw response for debugging
+            logger.info("=" * 80)
+            logger.info("RAW AI RESPONSE:")
+            logger.info(response)
+            logger.info("=" * 80)
+            
             # Try multiple strategies to extract JSON
             parsed_json = None
             
@@ -178,10 +184,11 @@ Expected JSON schema:
                 
                 if start_idx != -1 and end_idx > start_idx:
                     json_str = response[start_idx:end_idx]
+                    logger.info(f"Strategy 1 - Extracted JSON: {json_str[:200]}...")
                     parsed_json = json.loads(json_str)
-                    logger.info("Successfully parsed JSON using strategy 1 (curly braces)")
+                    logger.info("✓ Successfully parsed JSON using strategy 1 (curly braces)")
             except (json.JSONDecodeError, ValueError) as e:
-                logger.debug(f"Strategy 1 failed: {e}")
+                logger.warning(f"✗ Strategy 1 failed: {e}")
             
             # Strategy 2: Try to find JSON between square brackets (for arrays)
             if not parsed_json:
@@ -191,35 +198,42 @@ Expected JSON schema:
                     
                     if start_idx != -1 and end_idx > start_idx:
                         json_str = response[start_idx:end_idx]
+                        logger.info(f"Strategy 2 - Extracted JSON: {json_str[:200]}...")
                         parsed_json = json.loads(json_str)
-                        logger.info("Successfully parsed JSON using strategy 2 (square brackets)")
+                        logger.info("✓ Successfully parsed JSON using strategy 2 (square brackets)")
                 except (json.JSONDecodeError, ValueError) as e:
-                    logger.debug(f"Strategy 2 failed: {e}")
+                    logger.warning(f"✗ Strategy 2 failed: {e}")
             
             # Strategy 3: Try to parse entire response
             if not parsed_json:
                 try:
+                    logger.info(f"Strategy 3 - Trying to parse entire response")
                     parsed_json = json.loads(response)
-                    logger.info("Successfully parsed entire response as JSON")
+                    logger.info("✓ Successfully parsed entire response as JSON")
                 except (json.JSONDecodeError, ValueError) as e:
-                    logger.debug(f"Strategy 3 failed: {e}")
+                    logger.warning(f"✗ Strategy 3 failed: {e}")
             
             # Strategy 4: Try to remove markdown code blocks
             if not parsed_json:
                 try:
                     # Remove ```json and ``` markers
                     cleaned = response.replace('```json', '').replace('```', '').strip()
+                    logger.info(f"Strategy 4 - Cleaned response: {cleaned[:200]}...")
                     parsed_json = json.loads(cleaned)
-                    logger.info("Successfully parsed JSON after removing markdown")
+                    logger.info("✓ Successfully parsed JSON after removing markdown")
                 except (json.JSONDecodeError, ValueError) as e:
-                    logger.debug(f"Strategy 4 failed: {e}")
+                    logger.warning(f"✗ Strategy 4 failed: {e}")
             
             if parsed_json:
                 return parsed_json
             
-            # All strategies failed
-            logger.error(f"All JSON parsing strategies failed")
-            logger.debug(f"Response that failed to parse: {response[:500]}")
+            # All strategies failed - log full response for analysis
+            logger.error("=" * 80)
+            logger.error("ALL JSON PARSING STRATEGIES FAILED")
+            logger.error("Full response for analysis:")
+            logger.error(response)
+            logger.error("=" * 80)
+            
             return {
                 "error": "Failed to parse JSON response",
                 "error_type": "json_decode_error",
@@ -229,6 +243,8 @@ Expected JSON schema:
         
         except Exception as e:
             logger.error(f"Structured output generation failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {
                 "error": str(e),
                 "error_type": "generation_error",
