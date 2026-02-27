@@ -58,6 +58,7 @@ class FlashcardManager:
             List of generated flashcards
         """
         try:
+            logger.info(f"Generating flashcards from code analysis...")
             flashcards = []
             
             # Generate flashcards from functions
@@ -73,6 +74,7 @@ class FlashcardManager:
                     mastered=False
                 )
                 flashcards.append(card)
+                logger.info(f"Generated flashcard for function: {func.name}")
             
             # Generate flashcards from classes
             for cls in code_analysis.structure.classes[:3]:  # Limit to 3
@@ -87,6 +89,7 @@ class FlashcardManager:
                     mastered=False
                 )
                 flashcards.append(card)
+                logger.info(f"Generated flashcard for class: {cls.name}")
             
             # Generate flashcards from patterns
             for pattern in code_analysis.patterns[:3]:  # Limit to 3
@@ -101,14 +104,23 @@ class FlashcardManager:
                     mastered=False
                 )
                 flashcards.append(card)
+                logger.info(f"Generated flashcard for pattern: {pattern.name}")
+            
+            logger.info(f"Total flashcards generated: {len(flashcards)}")
             
             # Save flashcards
-            self._save_flashcards(flashcards)
+            if flashcards:
+                self._save_flashcards(flashcards)
+                logger.info("Flashcards saved successfully")
+            else:
+                logger.warning("No flashcards generated - code analysis may be empty")
             
             return flashcards
         
         except Exception as e:
             logger.error(f"Failed to generate flashcards: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
     
     def create_custom_flashcard(
@@ -263,18 +275,35 @@ class FlashcardManager:
         """Save flashcards to session."""
         try:
             progress = self.session_manager.load_progress()
-            flashcard_data = progress.get("flashcards", {"cards": []})
+            
+            # Get existing progress data or create new
+            if isinstance(progress, dict) and "data" in progress:
+                # Progress was saved with wrapper structure
+                progress_data = progress["data"]
+            else:
+                # Progress is the data itself
+                progress_data = progress if isinstance(progress, dict) else {}
+            
+            # Clear existing flashcards and replace with new ones
+            flashcard_data = {
+                "cards": [],
+                "review_schedule": {}
+            }
             
             # Convert flashcards to dicts
             for card in flashcards:
                 card_dict = self._flashcard_to_dict(card)
                 flashcard_data["cards"].append(card_dict)
             
-            progress["flashcards"] = flashcard_data
-            self.session_manager.save_progress("flashcards_saved", progress)
+            progress_data["flashcards"] = flashcard_data
+            self.session_manager.save_progress("flashcards_saved", progress_data)
+            
+            logger.info(f"Saved {len(flashcards)} flashcards to session")
         
         except Exception as e:
             logger.error(f"Failed to save flashcards: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     def _flashcard_to_dict(self, card: Flashcard) -> dict:
         """Convert flashcard to dictionary."""

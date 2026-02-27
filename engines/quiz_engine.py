@@ -103,6 +103,114 @@ class QuizEngine:
         except Exception as e:
             logger.error(f"Quiz generation failed: {e}")
             return self._generate_fallback_quiz(topic, num_questions)
+    def generate_quiz_from_code(
+        self,
+        code_analysis,
+        language: str = "english",
+        num_questions: int = 5
+    ) -> Quiz:
+        """
+        Generate quiz from code analysis.
+
+        Args:
+            code_analysis: CodeAnalysis object
+            language: Output language
+            num_questions: Number of questions to generate
+
+        Returns:
+            Generated quiz based on the code
+        """
+        try:
+            questions = []
+            question_id = 0
+
+            # Generate questions from functions
+            for func in code_analysis.structure.functions[:3]:
+                question_id += 1
+                questions.append(Question(
+                    id=str(question_id),
+                    type="multiple_choice",
+                    question_text=f"What does the function '{func.name}' do?",
+                    options=[
+                        func.docstring or f"Processes {', '.join(func.parameters[:2])}",
+                        "Handles database operations",
+                        "Manages user authentication",
+                        "Performs data validation"
+                    ],
+                    correct_answer=func.docstring or f"Processes {', '.join(func.parameters[:2])}",
+                    explanation=f"The function '{func.name}' is defined at line {func.line_number} with parameters: {', '.join(func.parameters)}"
+                ))
+
+                if len(questions) >= num_questions:
+                    break
+
+            # Generate questions from classes
+            for cls in code_analysis.structure.classes[:2]:
+                if len(questions) >= num_questions:
+                    break
+
+                question_id += 1
+                questions.append(Question(
+                    id=str(question_id),
+                    type="multiple_choice",
+                    question_text=f"What is the purpose of the '{cls.name}' class?",
+                    options=[
+                        cls.docstring or f"Manages {cls.name.lower()} operations",
+                        "Handles API requests",
+                        "Stores configuration data",
+                        "Manages database connections"
+                    ],
+                    correct_answer=cls.docstring or f"Manages {cls.name.lower()} operations",
+                    explanation=f"The class '{cls.name}' is defined at line {cls.line_number} with methods: {', '.join(cls.methods[:5])}"
+                ))
+
+            # Generate questions from patterns
+            for pattern in code_analysis.patterns[:2]:
+                if len(questions) >= num_questions:
+                    break
+
+                question_id += 1
+                questions.append(Question(
+                    id=str(question_id),
+                    type="multiple_choice",
+                    question_text=f"Which pattern is used in this code: {pattern.name}?",
+                    options=[
+                        pattern.description,
+                        "Singleton pattern for single instance",
+                        "Factory pattern for object creation",
+                        "Observer pattern for event handling"
+                    ],
+                    correct_answer=pattern.description,
+                    explanation=f"The code uses {pattern.name} pattern at {pattern.location}"
+                ))
+
+            # Pad with generic questions if needed
+            while len(questions) < num_questions:
+                question_id += 1
+                questions.append(Question(
+                    id=str(question_id),
+                    type="multiple_choice",
+                    question_text="What is a key concept in this codebase?",
+                    options=[
+                        "Understanding the code structure and flow",
+                        "Ignoring documentation",
+                        "Avoiding best practices",
+                        "Random implementation"
+                    ],
+                    correct_answer="Understanding the code structure and flow",
+                    explanation=f"This codebase has {len(code_analysis.structure.functions)} functions and {len(code_analysis.structure.classes)} classes"
+                ))
+
+            return Quiz(
+                id="code_based_quiz",
+                topic="Your Uploaded Code",
+                questions=questions[:num_questions],
+                time_limit_minutes=num_questions * 2
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to generate quiz from code: {e}")
+            return self._generate_fallback_quiz("Code Analysis", num_questions)
     
     def evaluate_answer(
         self,
