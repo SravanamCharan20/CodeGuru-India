@@ -103,6 +103,33 @@ def test_audio_recorder_integration():
             print("   ❌ Mock transcription failed")
             all_passed = False
         
+        # Test AWS Transcribe integration
+        print("\n🌐 AWS Transcribe Integration:")
+        from config import load_config
+        aws_config, _ = load_config()
+        processor_aws = VoiceProcessor(aws_config)
+        
+        if processor_aws.transcribe_client:
+            print("   ✅ AWS Transcribe client initialized")
+            
+            # Check helper methods
+            helper_methods = [
+                '_get_or_create_bucket',
+                '_prepare_audio_for_transcribe',
+                '_fetch_transcript',
+                '_cleanup_transcription_job',
+                '_cleanup_s3_object'
+            ]
+            
+            for method in helper_methods:
+                if hasattr(processor_aws, method):
+                    print(f"   ✅ {method}")
+                else:
+                    print(f"   ❌ {method} - NOT FOUND")
+                    all_passed = False
+        else:
+            print("   ⚠️  AWS Transcribe not configured (will use mock)")
+        
         # Test UI integration
         print("\n🖥️ UI Integration:")
         with open('ui/code_upload.py', 'r') as f:

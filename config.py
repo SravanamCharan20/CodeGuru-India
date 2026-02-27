@@ -14,6 +14,7 @@ class AWSConfig:
     bedrock_model_id: str
     max_tokens: int
     temperature: float
+    s3_bucket: str = None  # Optional S3 bucket for transcription
 
 
 @dataclass
@@ -32,7 +33,8 @@ def load_config() -> Tuple[AWSConfig, AppConfig]:
         region=os.getenv("AWS_REGION", "us-east-1"),
         bedrock_model_id=os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-v2"),
         max_tokens=int(os.getenv("MAX_TOKENS", "2000")),
-        temperature=float(os.getenv("TEMPERATURE", "0.7"))
+        temperature=float(os.getenv("TEMPERATURE", "0.7")),
+        s3_bucket=os.getenv("S3_TRANSCRIBE_BUCKET", None)  # Optional
     )
     
     app_config = AppConfig(

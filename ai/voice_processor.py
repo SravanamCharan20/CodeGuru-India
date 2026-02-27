@@ -229,17 +229,104 @@ class VoiceProcessor:
             import boto3
             import uuid
             import json
+            import io
+            from botocore.exceptions import ClientError
             
-            # Upload audio to S3 (simplified - real implementation would use S3)
-            # For now, use AWS Transcribe streaming API or return mock
+            # Generate unique job name
+            job_name = f"transcribe-{uuid.uuid4().hex[:8]}"
             
-            # This is a placeholder - real implementation would:
-            # 1. Upload audio to S3
-            # 2. Start transcription job
-            # 3. Wait for completion
-            # 4. Retrieve and return transcript
+            # Create S3 client
+            s3_client = boto3.client('s3', region_name=self.aws_config.region)
             
-            logger.warning("AWS Transcribe integration not fully implemented, using mock")
+            # Get or create S3 bucket for audio files
+            bucket_name = self._get_or_create_bucket(s3_client)
+            if not bucket_name:
+                logger.warning("Failed to create S3 bucket, using mock transcription")
+                return self._mock_transcribe(language_code[:2])
+            
+            # Upload audio to S3
+            s3_key = f"audio/{job_name}.wav"
+            try:
+                # Convert audio bytes to WAV format if needed
+                audio_file = self._prepare_audio_for_transcribe(audio_data)
+                
+                s3_client.put_object(
+                    Bucket=bucket_name,
+                    Key=s3_key,
+                    Body=audio_file,
+                    ContentType='audio/wav'
+                )
+                logger.info(f"Uploaded audio to s3://{bucket_name}/{s3_key}")
+            except Exception as e:
+                logger.error(f"Failed to upload audio to S3: {e}")
+                return self._mock_transcribe(language_code[:2])
+            
+            # Start transcription job
+            try:
+                media_uri = f"s3://{bucket_name}/{s3_key}"
+                
+                self.transcribe_client.start_transcription_job(
+                    TranscriptionJobName=job_name,
+                    Media={'MediaFileUri': media_uri},
+                    MediaFormat='wav',
+                    LanguageCode=language_code
+                    # Removed Settings to avoid validation errors
+                )
+                logger.info(f"Started transcription job: {job_name}")
+            except Exception as e:
+                logger.error(f"Failed to start transcription job: {e}")
+                # Clean up S3 object
+                self._cleanup_s3_object(s3_client, bucket_name, s3_key)
+                return self._mock_transcribe(language_code[:2])
+            
+            # Wait for transcription to complete
+            max_wait_time = 60  # seconds
+            wait_interval = 2  # seconds
+            elapsed_time = 0
+            
+            while elapsed_time < max_wait_time:
+                try:
+                    response = self.transcribe_client.get_transcription_job(
+                        TranscriptionJobName=job_name
+                    )
+                    
+                    status = response['TranscriptionJob']['TranscriptionJobStatus']
+                    
+                    if status == 'COMPLETED':
+                        # Get transcript
+                        transcript_uri = response['TranscriptionJob']['Transcript']['TranscriptFileUri']
+                        transcript_text = self._fetch_transcript(transcript_uri)
+                        
+                        # Clean up
+                        self._cleanup_transcription_job(job_name)
+                        self._cleanup_s3_object(s3_client, bucket_name, s3_key)
+                        
+                        logger.info(f"Transcription completed: {transcript_text[:50]}...")
+                        return transcript_text
+                    
+                    elif status == 'FAILED':
+                        failure_reason = response['TranscriptionJob'].get('FailureReason', 'Unknown')
+                        logger.error(f"Transcription job failed: {failure_reason}")
+                        
+                        # Clean up
+                        self._cleanup_transcription_job(job_name)
+                        self._cleanup_s3_object(s3_client, bucket_name, s3_key)
+                        
+                        return self._mock_transcribe(language_code[:2])
+                    
+                    # Still in progress
+                    time.sleep(wait_interval)
+                    elapsed_time += wait_interval
+                
+                except Exception as e:
+                    logger.error(f"Error checking transcription status: {e}")
+                    break
+            
+            # Timeout - clean up and return mock
+            logger.warning(f"Transcription job timed out after {max_wait_time}s")
+            self._cleanup_transcription_job(job_name)
+            self._cleanup_s3_object(s3_client, bucket_name, s3_key)
+            
             return self._mock_transcribe(language_code[:2])
         
         except Exception as e:
@@ -263,6 +350,197 @@ class VoiceProcessor:
         }
         
         return mock_transcripts.get(language, mock_transcripts['en'])
+    
+    def _get_or_create_bucket(self, s3_client) -> Optional[str]:
+        """
+        Get or create S3 bucket for audio files.
+        
+        Args:
+            s3_client: Boto3 S3 client
+            
+        Returns:
+            Bucket name or None if failed
+        """
+        try:
+            # Check if user provided a bucket name in config
+            if self.aws_config and self.aws_config.s3_bucket:
+                bucket_name = self.aws_config.s3_bucket
+                logger.info(f"Using configured bucket: {bucket_name}")
+                
+                # Verify bucket exists and is accessible
+                try:
+                    s3_client.head_bucket(Bucket=bucket_name)
+                    logger.info(f"Bucket accessible: {bucket_name}")
+                    return bucket_name
+                except Exception as e:
+                    logger.error(f"Configured bucket not accessible: {e}")
+                    return None
+            
+            # Try to use a consistent bucket name based on region
+            bucket_name = f"codeguru-transcribe-{self.aws_config.region}"
+            
+            # Check if bucket exists
+            try:
+                s3_client.head_bucket(Bucket=bucket_name)
+                logger.info(f"Using existing bucket: {bucket_name}")
+                return bucket_name
+            except:
+                # Bucket doesn't exist, try to create it
+                pass
+            
+            # Try to create bucket
+            try:
+                if self.aws_config.region == 'us-east-1':
+                    # us-east-1 doesn't need LocationConstraint
+                    s3_client.create_bucket(Bucket=bucket_name)
+                else:
+                    s3_client.create_bucket(
+                        Bucket=bucket_name,
+                        CreateBucketConfiguration={
+                            'LocationConstraint': self.aws_config.region
+                        }
+                    )
+                
+                # Set lifecycle policy to delete old files
+                try:
+                    s3_client.put_bucket_lifecycle_configuration(
+                        Bucket=bucket_name,
+                        LifecycleConfiguration={
+                            'Rules': [
+                                {
+                                    'ID': 'DeleteOldAudio',  # Changed from 'Id' to 'ID'
+                                    'Status': 'Enabled',
+                                    'Prefix': 'audio/',
+                                    'Expiration': {'Days': 1}
+                                }
+                            ]
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to set lifecycle policy: {e}")
+                
+                logger.info(f"Created bucket: {bucket_name}")
+                return bucket_name
+            
+            except Exception as e:
+                logger.warning(f"Failed to create bucket (missing S3 permissions): {e}")
+                logger.info("To use AWS Transcribe, either:")
+                logger.info("  1. Add S3 permissions to your AWS user")
+                logger.info("  2. Create a bucket manually and set S3_TRANSCRIBE_BUCKET in .env")
+                logger.info("  3. Use mock transcription (automatic fallback)")
+                return None
+        
+        except Exception as e:
+            logger.error(f"Error managing S3 bucket: {e}")
+            return None
+    
+    def _prepare_audio_for_transcribe(self, audio_data: bytes) -> bytes:
+        """
+        Prepare audio data for AWS Transcribe.
+        
+        Args:
+            audio_data: Raw audio data in bytes
+            
+        Returns:
+            Audio data in WAV format
+        """
+        try:
+            # Check if audio is already in WAV format
+            if audio_data[:4] == b'RIFF':
+                logger.info("Audio is already in WAV format")
+                return audio_data
+            
+            # Try to convert using pydub if available
+            try:
+                from pydub import AudioSegment
+                import io
+                
+                # Try to load audio
+                audio = AudioSegment.from_file(io.BytesIO(audio_data))
+                
+                # Convert to WAV
+                wav_io = io.BytesIO()
+                audio.export(wav_io, format='wav')
+                wav_data = wav_io.getvalue()
+                
+                logger.info("Converted audio to WAV format")
+                return wav_data
+            
+            except ImportError:
+                logger.warning("pydub not available, using raw audio data")
+                return audio_data
+            except Exception as e:
+                logger.warning(f"Failed to convert audio: {e}, using raw data")
+                return audio_data
+        
+        except Exception as e:
+            logger.error(f"Error preparing audio: {e}")
+            return audio_data
+    
+    def _fetch_transcript(self, transcript_uri: str) -> str:
+        """
+        Fetch transcript from AWS Transcribe result URI.
+        
+        Args:
+            transcript_uri: URI to transcript JSON file
+            
+        Returns:
+            Transcribed text
+        """
+        try:
+            import requests
+            import json
+            
+            # Fetch transcript JSON
+            response = requests.get(transcript_uri, timeout=10)
+            response.raise_for_status()
+            
+            # Parse transcript
+            transcript_json = response.json()
+            
+            # Extract text from results
+            if 'results' in transcript_json:
+                transcripts = transcript_json['results'].get('transcripts', [])
+                if transcripts and len(transcripts) > 0:
+                    transcript_text = transcripts[0].get('transcript', '')
+                    return transcript_text
+            
+            logger.warning("No transcript found in response")
+            return ""
+        
+        except Exception as e:
+            logger.error(f"Failed to fetch transcript: {e}")
+            return ""
+    
+    def _cleanup_transcription_job(self, job_name: str):
+        """
+        Clean up transcription job.
+        
+        Args:
+            job_name: Transcription job name
+        """
+        try:
+            self.transcribe_client.delete_transcription_job(
+                TranscriptionJobName=job_name
+            )
+            logger.info(f"Deleted transcription job: {job_name}")
+        except Exception as e:
+            logger.warning(f"Failed to delete transcription job: {e}")
+    
+    def _cleanup_s3_object(self, s3_client, bucket_name: str, key: str):
+        """
+        Clean up S3 object.
+        
+        Args:
+            s3_client: Boto3 S3 client
+            bucket_name: S3 bucket name
+            key: S3 object key
+        """
+        try:
+            s3_client.delete_object(Bucket=bucket_name, Key=key)
+            logger.info(f"Deleted S3 object: s3://{bucket_name}/{key}")
+        except Exception as e:
+            logger.warning(f"Failed to delete S3 object: {e}")
     
     def validate_audio(
         self,
