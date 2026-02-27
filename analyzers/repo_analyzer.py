@@ -114,6 +114,20 @@ class RepoAnalyzer:
                 # Identify main files
                 main_files = self._identify_main_files(all_files)
                 
+                # Store file contents for main files (for later analysis)
+                import streamlit as st
+                if 'st' in dir():
+                    repo_files = {}
+                    for file in main_files:
+                        try:
+                            file_path = os.path.join(temp_dir, file.path)
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                repo_files[file.path] = f.read()
+                        except Exception as e:
+                            logger.warning(f"Failed to read file {file.path}: {e}")
+                    
+                    st.session_state.repo_files = repo_files
+                
                 # Generate summary
                 summary = self._generate_summary(
                     repo_url, total_files, total_lines, 

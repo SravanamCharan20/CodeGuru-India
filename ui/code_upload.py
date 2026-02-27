@@ -100,31 +100,83 @@ def render_code_upload():
         # Initialize voice query state
         if "voice_query" not in st.session_state:
             st.session_state.voice_query = ""
+        if "voice_transcript" not in st.session_state:
+            st.session_state.voice_transcript = ""
         
         # Voice processor
         voice_processor = st.session_state.get("voice_processor")
         
+        st.markdown("### 🎤 Voice Query")
+        
         if voice_processor:
             languages = voice_processor.get_supported_languages()
-            info_box(f"Multi-Language Voice Support: {', '.join(languages.values())}", "info")
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            if st.button("🎤 Start Recording", use_container_width=True, type="secondary"):
-                st.info("🎙️ Voice recording requires audio input. Use the text box for now!")
-        
-        with col2:
-            voice_query = st.text_area(
-                "Type your question",
-                placeholder="What does this function do?\nExplain the authentication logic\nHow does this code work?",
-                height=120,
-                key="voice_query_input",
-                label_visibility="collapsed"
+            
+            # Language selector for voice
+            voice_lang = st.selectbox(
+                "Select Voice Language",
+                options=list(languages.keys()),
+                format_func=lambda x: languages[x],
+                key="voice_language"
             )
             
-            if voice_query:
-                st.session_state.voice_query = voice_query
+            info_box(f"Speak in {languages[voice_lang]} to ask questions about your code", "info")
+            
+            spacing("sm")
+            
+            # Audio recorder component
+            st.markdown("**Record your question:**")
+            
+            try:
+                # Try to use streamlit-audio-recorder if available
+                from audio_recorder_streamlit import audio_recorder
+                
+                audio_bytes = audio_recorder(
+                    text="Click to record",
+                    recording_color="#0066CC",
+                    neutral_color="#666666",
+                    icon_name="microphone",
+                    icon_size="2x"
+                )
+                
+                if audio_bytes:
+                    st.success("✓ Audio recorded!")
+                    
+                    # Process audio
+                    if st.button("🔄 Transcribe Audio", type="primary"):
+                        with st.spinner("🎙️ Transcribing..."):
+                            result = voice_processor.process_audio(audio_bytes, voice_lang)
+                            
+                            if result:
+                                st.session_state.voice_transcript = result.transcript
+                                st.session_state.voice_query = result.transcript
+                                
+                                st.success(f"✓ Transcribed ({result.confidence:.0%} confidence)")
+                                st.info(f"**Transcript:** {result.transcript}")
+                            else:
+                                st.error("Failed to transcribe audio")
+            
+            except ImportError:
+                st.warning("⚠️ Audio recorder not available. Install with: pip install streamlit-audio-recorder")
+                st.info("💡 Use the text box below instead")
+        
+        else:
+            st.warning("⚠️ Voice processor not initialized")
+        
+        spacing("md")
+        
+        # Text input as fallback
+        st.markdown("**Or type your question:**")
+        voice_query = st.text_area(
+            "Type your question",
+            value=st.session_state.voice_transcript,
+            placeholder="What does this function do?\nExplain the authentication logic\nHow does this code work?",
+            height=120,
+            key="voice_query_input",
+            label_visibility="collapsed"
+        )
+        
+        if voice_query:
+            st.session_state.voice_query = voice_query
         
         # Process voice query button
         if st.session_state.voice_query:
@@ -136,23 +188,55 @@ def render_code_upload():
                     if code and "explanation_engine" in st.session_state:
                         try:
                             language = session_manager.get_language_preference()
-                            explanation = st.session_state.explanation_engine.explain_code(
-                                code=code,
-                                language=language,
-                                difficulty="intermediate"
-                            )
                             
-                            st.session_state.voice_query_result = {
-                                "query": query,
-                                "explanation": explanation
-                            }
-                            
-                            info_box("Query processed successfully!", "success")
-                            
-                            with st.expander("Answer", expanded=True):
-                                st.markdown(f"**Your Question:** {query}")
-                                st.divider()
-                                st.markdown(explanation.detailed_explanation if hasattr(explanation, 'detailed_explanation') else str(explanation))
+                            # Use orchestrator to answer the query
+                            orchestrator = st.session_state.get("orchestrator")
+                            if orchestrator:
+                                # Create a prompt that includes the query and code
+                                prompt = f"""Answer this question about the code:
+
+Question: {query}
+
+Code:
+```
+{code[:1000]}  # Limit code length
+```
+
+Provide a clear, concise answer in {language}."""
+                                
+                                answer = orchestrator.generate_completion(prompt, max_tokens=500)
+                                
+                                st.session_state.voice_query_result = {
+                                    "query": query,
+                                    "answer": answer
+                                }
+                                
+                                info_box("Query processed successfully!", "success")
+                                
+                                with st.expander("Answer", expanded=True):
+                                    st.markdown(f"**Your Question:** {query}")
+                                    st.divider()
+                                    st.markdown(answer)
+                            else:
+                                # Fallback to explanation engine
+                                explanation = st.session_state.explanation_engine.explain_code(
+                                    code=code,
+                                    context=f"User question: {query}",
+                                    language=language,
+                                    difficulty="intermediate"
+                                )
+                                
+                                st.session_state.voice_query_result = {
+                                    "query": query,
+                                    "explanation": explanation
+                                }
+                                
+                                info_box("Query processed successfully!", "success")
+                                
+                                with st.expander("Answer", expanded=True):
+                                    st.markdown(f"**Your Question:** {query}")
+                                    st.divider()
+                                    st.markdown(explanation.detailed_explanation if hasattr(explanation, 'detailed_explanation') else str(explanation))
                         
                         except Exception as e:
                             info_box(f"Failed to process query: {str(e)}", "error")

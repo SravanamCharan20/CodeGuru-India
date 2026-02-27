@@ -395,6 +395,57 @@ def _render_repo_analysis(repo_analysis):
     
     st.divider()
     
+    # Main files with code analysis
+    if repo_analysis.main_files:
+        st.markdown("### ⭐ Main Files - Code Analysis")
+        
+        # Let user select a file to analyze
+        file_options = [f"{file.path} ({file.lines} lines)" for file in repo_analysis.main_files]
+        selected_file_display = st.selectbox("Select a file to analyze:", file_options)
+        
+        if selected_file_display:
+            # Get the selected file index
+            selected_index = file_options.index(selected_file_display)
+            selected_file = repo_analysis.main_files[selected_index]
+            
+            # Try to read and analyze the file
+            if st.button(f"🔍 Analyze {selected_file.name}", type="primary"):
+                with st.spinner(f"Analyzing {selected_file.name}..."):
+                    # Get the file content from session if repo was cloned
+                    repo_files = st.session_state.get("repo_files", {})
+                    
+                    if selected_file.path in repo_files:
+                        code = repo_files[selected_file.path]
+                        
+                        # Analyze the file
+                        if "code_analyzer" in st.session_state:
+                            try:
+                                language = st.session_state.session_manager.get_language_preference()
+                                analysis = st.session_state.code_analyzer.analyze_file(
+                                    code=code,
+                                    filename=selected_file.name,
+                                    language=language
+                                )
+                                
+                                # Store analysis and switch to detailed view
+                                st.session_state.current_analysis = analysis
+                                st.session_state.session_manager.set_uploaded_code(code, selected_file.name)
+                                
+                                # Clear repo analysis to show file analysis
+                                del st.session_state.current_repo_analysis
+                                
+                                st.success(f"✅ Analysis complete for {selected_file.name}!")
+                                st.rerun()
+                            
+                            except Exception as e:
+                                st.error(f"Failed to analyze: {e}")
+                        else:
+                            st.warning("Code analyzer not available")
+                    else:
+                        st.warning("File content not available. Repository may need to be re-cloned.")
+    
+    st.divider()
+    
     # File tree
     st.markdown("### 📁 File Structure")
     
@@ -403,27 +454,20 @@ def _render_repo_analysis(repo_analysis):
             for file in files[:20]:  # Limit to 20 files per directory
                 st.text(f"  📄 {file.name} ({file.lines} lines)")
     
-    st.divider()
-    
-    # Main files
-    if repo_analysis.main_files:
-        st.markdown("### ⭐ Main Files")
-        
-        for file in repo_analysis.main_files:
-            st.info(f"📄 {file.path} ({file.lines} lines)")
-    
     # Action buttons
     st.divider()
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🔍 Analyze Main Files", use_container_width=True):
-            st.info("💡 Deep file analysis coming soon!")
+        if st.button("🔄 Refresh Analysis", use_container_width=True):
+            st.rerun()
     
     with col2:
         if st.button("📤 Upload Different Repo", use_container_width=True):
             # Clear repo analysis
             if "current_repo_analysis" in st.session_state:
                 del st.session_state.current_repo_analysis
+            if "repo_files" in st.session_state:
+                del st.session_state.repo_files
             st.session_state.current_page = "Upload Code"
             st.rerun()

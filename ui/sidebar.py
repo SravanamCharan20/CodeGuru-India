@@ -1,111 +1,100 @@
+"""Sidebar navigation component."""
 import streamlit as st
 
-st.set_page_config(layout="wide")
 
-# ---------- GLOBAL STYLES ----------
-st.markdown("""
-<style>
-.app {
-    display: grid;
-    grid-template-columns: 260px 1fr;
-    min-height: 100vh;
-}
-
-.nav {
-    border-right: 1px solid #E5E7EB;
-    padding: 24px 16px;
-}
-
-.nav-title {
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.nav-sub {
-    font-size: 13px;
-    color: #6B7280;
-    margin-top: 2px;
-}
-
-.nav-section {
-    margin-top: 32px;
-    font-size: 12px;
-    color: #6B7280;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.nav button {
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: none;
-    padding: 10px 12px;
-    margin-top: 6px;
-    border-radius: 8px;
-    font-size: 14px;
-}
-
-.nav button:hover {
-    background: #F3F4F6;
-}
-
-.nav-active {
-    background: #EEF4FF !important;
-    color: #0B5FFF;
-    font-weight: 600;
-}
-
-.main {
-    padding: 48px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------- STATE ----------
-if "page" not in st.session_state:
-    st.session_state.page = "Home"
-
-# ---------- LAYOUT ----------
-st.markdown('<div class="app">', unsafe_allow_html=True)
-
-# ---------- NAV ----------
-st.markdown('<div class="nav">', unsafe_allow_html=True)
-
-st.markdown("""
-<div class="nav-title">CodeGuru India</div>
-<div class="nav-sub">AI-Powered Learning</div>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="nav-section">Navigation</div>', unsafe_allow_html=True)
-
-pages = [
-    "Home",
-    "Upload Code",
-    "Explanations",
-    "Learning Paths",
-    "Quizzes",
-    "Flashcards",
-    "Progress"
-]
-
-for p in pages:
-    active = "nav-active" if st.session_state.page == p else ""
-    if st.button(p, key=p):
-        st.session_state.page = p
-        st.rerun()
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------- MAIN ----------
-st.markdown('<div class="main">', unsafe_allow_html=True)
-
-st.markdown(f"## {st.session_state.page}")
-
-st.markdown("""
-This is your main content area.
-It will **never disappear**.
-Navigation is **always visible**.
-""")
-
-st.markdown('</div></div>', unsafe_allow_html=True)
+def render_sidebar() -> str:
+    """
+    Render sidebar navigation and return selected page.
+    
+    Returns:
+        Selected page name
+    """
+    with st.sidebar:
+        # Logo and title
+        st.markdown("# 🎓 CodeGuru India")
+        st.markdown('<p style="color: #666666; font-size: 14px; margin-top: -16px;">AI-Powered Code Learning</p>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Language selector
+        st.markdown("### Language")
+        language = st.selectbox(
+            "Select Language",
+            options=["English", "हिंदी (Hindi)", "తెలుగు (Telugu)"],
+            label_visibility="collapsed"
+        )
+        
+        # Store language in session state
+        language_map = {
+            "English": "english",
+            "हिंदी (Hindi)": "hindi",
+            "తెలుగు (Telugu)": "telugu"
+        }
+        st.session_state.selected_language = language_map.get(language, "english")
+        
+        st.markdown("---")
+        
+        # Navigation
+        st.markdown("### Navigation")
+        
+        # Get current page from session state
+        if "current_page" not in st.session_state:
+            st.session_state.current_page = "Home"
+        
+        current_page = st.session_state.current_page
+        
+        # Navigation buttons
+        pages = [
+            ("Home", "🏠"),
+            ("Upload Code", "📤"),
+            ("Explanations", "📖"),
+            ("Learning Paths", "🗺️"),
+            ("Quizzes", "📝"),
+            ("Flashcards", "🎴"),
+            ("Progress", "📊")
+        ]
+        
+        for page_name, icon in pages:
+            # Determine button type based on current page
+            button_type = "primary" if page_name == current_page else "secondary"
+            
+            # Create button
+            if st.button(
+                f"{icon} {page_name}",
+                key=f"nav_{page_name}",
+                use_container_width=True,
+                type=button_type
+            ):
+                st.session_state.current_page = page_name
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Backend status
+        st.markdown("### Status")
+        
+        if st.session_state.get("backend_initialized", False):
+            st.success("✓ AI Connected")
+        else:
+            if st.session_state.get("backend_error"):
+                st.warning("⚠️ Using Mock Data")
+                with st.expander("Details"):
+                    st.caption(st.session_state.backend_error)
+            else:
+                st.info("⏳ Initializing...")
+        
+        st.markdown("---")
+        
+        # Help section
+        with st.expander("ℹ️ Help"):
+            st.markdown("""
+            **How to use:**
+            1. Upload your code
+            2. Get AI explanations
+            3. Take quizzes
+            4. Track progress
+            
+            **Tip:** Use the sidebar to close/open it
+            """)
+    
+    return st.session_state.current_page
