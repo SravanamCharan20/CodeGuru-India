@@ -75,11 +75,31 @@ class BedrockClient:
                     }
                 ]
             }
+        elif "llama" in model_id.lower() or "meta" in model_id.lower():
+            # Meta Llama format
+            body = {
+                "prompt": prompt,
+                "max_gen_len": model_params["max_tokens"],
+                "temperature": model_params["temperature"],
+                "top_p": model_params["top_p"]
+            }
+        elif "titan" in model_id.lower():
+            # Amazon Titan format
+            body = {
+                "inputText": prompt,
+                "textGenerationConfig": {
+                    "maxTokenCount": model_params["max_tokens"],
+                    "temperature": model_params["temperature"],
+                    "topP": model_params["top_p"]
+                }
+            }
         else:
             # Generic format for other models
             body = {
                 "prompt": prompt,
-                **model_params
+                "max_tokens": model_params["max_tokens"],
+                "temperature": model_params["temperature"],
+                "top_p": model_params["top_p"]
             }
         
         # Invoke with retry logic
@@ -98,6 +118,10 @@ class BedrockClient:
                 # Extract response based on model type
                 if "anthropic" in model_id.lower():
                     return response_body['content'][0]['text']
+                elif "llama" in model_id.lower() or "meta" in model_id.lower():
+                    return response_body.get('generation', response_body.get('text', ''))
+                elif "titan" in model_id.lower():
+                    return response_body['results'][0]['outputText']
                 else:
                     return response_body.get('completion', response_body.get('text', ''))
                 
