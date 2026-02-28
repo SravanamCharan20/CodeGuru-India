@@ -32,6 +32,8 @@ class TraceabilityManager:
             from session_manager import SessionManager
             session_manager = SessionManager()
         self.session_manager = session_manager
+        self._path_index_cache: Dict[str, str] = {}
+        self._path_index_root: Optional[str] = None
         self._initialize_storage()
     
     def _initialize_storage(self):
@@ -65,14 +67,34 @@ class TraceabilityManager:
         """
         try:
             if not code_evidence:
-                logger.warning(f"Artifact {artifact_id} has no code evidence")
-                return False
+                # Keep artifact entry, but mark it as having no evidence.
+                self.session_manager.traceability_data['artifact_to_code'][artifact_id] = []
+                self.session_manager.traceability_data.setdefault('artifact_types', {})[artifact_id] = artifact_type
+                self.session_manager.traceability_data['validation_status'][artifact_id] = {
+                    'is_valid': False,
+                    'last_validated': datetime.now().isoformat(),
+                    'validation_message': 'No code evidence provided'
+                }
+                return True
             
-            # Verify all evidence exists
+            # Resolve and verify evidence; keep only valid entries.
+            valid_evidence: List[CodeEvidence] = []
             for evidence in code_evidence:
-                if not self.verify_evidence_exists(evidence):
-                    logger.warning(f"Evidence does not exist: {evidence.file_path}:{evidence.line_start}")
-                    return False
+                if not evidence.code_snippet:
+                    evidence.code_snippet = self.get_code_snippet(evidence)
+                
+                if self.verify_evidence_exists(evidence):
+                    valid_evidence.append(evidence)
+            
+            if not valid_evidence:
+                self.session_manager.traceability_data['artifact_to_code'][artifact_id] = []
+                self.session_manager.traceability_data.setdefault('artifact_types', {})[artifact_id] = artifact_type
+                self.session_manager.traceability_data['validation_status'][artifact_id] = {
+                    'is_valid': False,
+                    'last_validated': datetime.now().isoformat(),
+                    'validation_message': 'No resolvable code evidence found'
+                }
+                return True
             
             # Store artifact-to-code mapping
             self.session_manager.traceability_data['artifact_to_code'][artifact_id] = [
@@ -83,12 +105,12 @@ class TraceabilityManager:
                     'code_snippet': e.code_snippet,
                     'context_description': e.context_description
                 }
-                for e in code_evidence
+                for e in valid_evidence
             ]
             self.session_manager.traceability_data.setdefault('artifact_types', {})[artifact_id] = artifact_type
             
             # Store code-to-artifact mappings
-            for evidence in code_evidence:
+            for evidence in valid_evidence:
                 key = f"{evidence.file_path}:{evidence.line_start}"
                 if key not in self.session_manager.traceability_data['code_to_artifacts']:
                     self.session_manager.traceability_data['code_to_artifacts'][key] = []
@@ -101,7 +123,7 @@ class TraceabilityManager:
                 'validation_message': 'Artifact registered successfully'
             }
             
-            logger.info(f"Registered artifact {artifact_id} with {len(code_evidence)} evidence links")
+            logger.info(f"Registered artifact {artifact_id} with {len(valid_evidence)} evidence links")
             return True
         
         except Exception as e:
@@ -283,8 +305,9 @@ class TraceabilityManager:
                 return evidence.code_snippet
             
             # Otherwise, try to read from file
-            if os.path.exists(evidence.file_path):
-                with open(evidence.file_path, 'r', encoding='utf-8') as f:
+            resolved_path = self._resolve_file_path(evidence.file_path) or evidence.file_path
+            if os.path.exists(resolved_path):
+                with open(resolved_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                     
                     # Extract lines (1-indexed to 0-indexed)
@@ -311,26 +334,29 @@ class TraceabilityManager:
             True if evidence exists, False otherwise
         """
         try:
+            resolved_path = self._resolve_file_path(evidence.file_path)
+            path_to_check = resolved_path or evidence.file_path
+
             # Check if file exists
-            if not os.path.exists(evidence.file_path):
+            if not os.path.exists(path_to_check):
                 # Allow relative/non-local evidence if a snippet is already provided.
                 # This supports generated artifacts that reference repo-relative paths.
                 if evidence.code_snippet:
                     return True
-                logger.warning(f"File does not exist: {evidence.file_path}")
+                logger.debug(f"File does not exist: {evidence.file_path}")
                 return False
             
             # Check if line numbers are valid
             if evidence.line_start < 1 or evidence.line_end < evidence.line_start:
-                logger.warning(f"Invalid line numbers: {evidence.line_start}-{evidence.line_end}")
+                logger.debug(f"Invalid line numbers: {evidence.line_start}-{evidence.line_end}")
                 return False
             
             # If snippet provided, verify it exists in file
             if evidence.code_snippet:
-                with open(evidence.file_path, 'r', encoding='utf-8') as f:
+                with open(path_to_check, 'r', encoding='utf-8') as f:
                     content = f.read()
                     if evidence.code_snippet not in content:
-                        logger.warning(f"Code snippet not found in {evidence.file_path}")
+                        logger.debug(f"Code snippet not found in {evidence.file_path}")
                         return False
             
             return True
@@ -338,3 +364,62 @@ class TraceabilityManager:
         except Exception as e:
             logger.error(f"Failed to verify evidence: {e}")
             return False
+
+    # ---------------------------------------------------------------------
+    # Path resolution helpers
+    # ---------------------------------------------------------------------
+
+    def _resolve_file_path(self, file_path: str) -> Optional[str]:
+        """Resolve evidence path against current repository root and cached index."""
+        if not file_path:
+            return None
+
+        normalized = os.path.normpath(file_path)
+        if os.path.isabs(normalized) and os.path.exists(normalized):
+            return normalized
+
+        repo_root = self._get_current_repo_root()
+        if not repo_root:
+            return normalized if os.path.exists(normalized) else None
+
+        direct_path = os.path.normpath(os.path.join(repo_root, normalized))
+        if os.path.exists(direct_path):
+            return direct_path
+
+        # Case-insensitive / normalized fallback using repository index.
+        key = normalized.replace("\\", "/").lstrip("./").lower()
+        self._refresh_path_index_if_needed(repo_root)
+        indexed = self._path_index_cache.get(key)
+        if indexed and os.path.exists(indexed):
+            return indexed
+
+        return None
+
+    def _get_current_repo_root(self) -> Optional[str]:
+        """Get repository root path from session state."""
+        try:
+            repo_context = self.session_manager.get_current_repository()
+            if not repo_context:
+                return None
+            repo_root = repo_context.get('repo_path')
+            if repo_root and os.path.isdir(repo_root):
+                return repo_root
+            return None
+        except Exception:
+            return None
+
+    def _refresh_path_index_if_needed(self, repo_root: str) -> None:
+        """Build a lowercase relative-path -> absolute-path index for repo files."""
+        if self._path_index_root == repo_root and self._path_index_cache:
+            return
+
+        path_index: Dict[str, str] = {}
+        for root, dirs, files in os.walk(repo_root):
+            dirs[:] = [d for d in dirs if d not in {'.git', 'node_modules', '__pycache__', 'venv', 'env', 'dist', 'build'}]
+            for filename in files:
+                abs_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(abs_path, repo_root).replace("\\", "/").lower()
+                path_index[rel_path] = abs_path
+
+        self._path_index_root = repo_root
+        self._path_index_cache = path_index
