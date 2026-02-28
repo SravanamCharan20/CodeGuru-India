@@ -168,6 +168,16 @@ def render_flashcard_view():
             if st.button("✅ Mark Reviewed", use_container_width=True):
                 st.session_state.reviewed_cards.add(card_id)
                 st.success("Card marked as reviewed!")
+                progress_tracker = st.session_state.get("progress_tracker")
+                if progress_tracker:
+                    progress_tracker.record_activity(
+                        "flashcard_reviewed",
+                        {
+                            "topic": card.get("topic", "flashcards"),
+                            "skill": card.get("topic", "flashcards").lower().replace(" ", "_"),
+                            "minutes_spent": 2,
+                        },
+                    )
                 
                 # Auto-advance to next card
                 if current_idx < total_cards - 1:
@@ -180,6 +190,16 @@ def render_flashcard_view():
                 st.session_state.mastered_cards.add(card_id)
                 st.session_state.reviewed_cards.add(card_id)
                 st.success("Card mastered! Great job!")
+                progress_tracker = st.session_state.get("progress_tracker")
+                if progress_tracker:
+                    progress_tracker.record_activity(
+                        "flashcard_mastered",
+                        {
+                            "topic": card.get("topic", "flashcards"),
+                            "skill": card.get("topic", "flashcards").lower().replace(" ", "_"),
+                            "minutes_spent": 3,
+                        },
+                    )
                 
                 # Auto-advance to next card
                 if current_idx < total_cards - 1:

@@ -282,6 +282,7 @@ Provide a detailed explanation that:
 4. Provides code examples from the codebase
 5. Explains any relevant concepts or patterns
 6. Mentions best practices or alternatives if relevant
+7. Add one concise culturally relevant Indian analogy (chai stall/cricket/railways/etc.) when it helps understanding
 
 Output language requirement:
 - Write the explanation in {language_name}

@@ -161,6 +161,7 @@ def initialize_backend_services():
             from analyzers.multi_intent_analyzer import MultiIntentAnalyzer
             from analyzers.rag_explainer import RAGExplainer
             from storage.memory_store import MemoryStore
+            from storage.session_memory_store import SessionMemoryStore
             from generators.chat_learning_generator import ChatLearningGenerator
             
             intent_interpreter = IntentInterpreter(orchestrator)
@@ -187,7 +188,12 @@ def initialize_backend_services():
             semantic_search = SemanticCodeSearch(orchestrator)
             multi_intent_analyzer = MultiIntentAnalyzer(orchestrator)
             rag_explainer = RAGExplainer(orchestrator, web_search_available=False)
-            memory_store = MemoryStore()
+            if app_config.memory_backend == "sqlite":
+                memory_store = MemoryStore()
+                memory_backend = "sqlite"
+            else:
+                memory_store = SessionMemoryStore()
+                memory_backend = "session"
             chat_learning_generator = ChatLearningGenerator(orchestrator)
             
             # Store in session state
@@ -218,6 +224,7 @@ def initialize_backend_services():
             st.session_state.multi_intent_analyzer = multi_intent_analyzer
             st.session_state.rag_explainer = rag_explainer
             st.session_state.memory_store = memory_store
+            st.session_state.memory_backend = memory_backend
             st.session_state.chat_learning_generator = chat_learning_generator
             
             st.session_state.backend_initialized = True

@@ -9,7 +9,10 @@ def render_explanation_view():
     
     session_manager = st.session_state.session_manager
     uploaded_code = session_manager.get_uploaded_code()
+    repo_context = session_manager.get_current_repository()
     repo_analysis = st.session_state.get("current_repo_analysis", None)
+    if not repo_analysis and repo_context:
+        repo_analysis = repo_context.get("repo_analysis")
     
     # Check if we have either uploaded code or repo analysis
     if not uploaded_code and not repo_analysis:
@@ -362,7 +365,7 @@ def _render_repo_analysis(repo_analysis):
     st.markdown("### 📦 Repository Analysis")
     
     # Display summary
-    st.text(repo_analysis.summary)
+    st.text(getattr(repo_analysis, "summary", "Repository summary not available."))
     
     st.divider()
     
@@ -377,6 +380,12 @@ def _render_repo_analysis(repo_analysis):
         st.metric("Size", f"{size_mb:.2f} MB")
     with col4:
         st.metric("Languages", len(repo_analysis.languages))
+
+    st.divider()
+
+    st.markdown("### 🗺️ Repository Architecture Snapshot (Mermaid)")
+    st.code(_build_repo_mermaid(repo_analysis), language="mermaid")
+    st.caption("Copy this Mermaid code to mermaid.live for interactive visualization.")
     
     st.divider()
     
@@ -471,3 +480,36 @@ def _render_repo_analysis(repo_analysis):
                 del st.session_state.repo_files
             st.session_state.current_page = "Upload Code"
             st.rerun()
+
+
+def _safe_node_id(raw: str) -> str:
+    """Create Mermaid-safe node ids."""
+    cleaned = "".join(ch for ch in raw if ch.isalnum() or ch == "_")
+    return cleaned or "node"
+
+
+def _build_repo_mermaid(repo_analysis) -> str:
+    """Build a concise Mermaid graph for repository overview."""
+    lines = ["graph TB", "    Repo[Repository]"]
+
+    languages = list(getattr(repo_analysis, "languages", {}).items())[:4]
+    if languages:
+        lines.append("    subgraph Languages")
+        for lang, count in languages:
+            node = _safe_node_id(f"lang_{lang}")
+            lines.append(f"        {node}[{lang}: {count} lines]")
+            lines.append(f"        Repo --> {node}")
+        lines.append("    end")
+
+    main_files = getattr(repo_analysis, "main_files", [])[:6]
+    if main_files:
+        lines.append("    subgraph StarterFiles")
+        for file_info in main_files:
+            file_name = getattr(file_info, "name", "file")
+            file_lines = getattr(file_info, "lines", 0)
+            node = _safe_node_id(f"file_{file_name}")
+            lines.append(f"        {node}[{file_name} ({file_lines} lines)]")
+            lines.append(f"        Repo --> {node}")
+        lines.append("    end")
+
+    return "\n".join(lines)

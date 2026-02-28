@@ -43,6 +43,8 @@ class SessionManager:
             "traceability",
             "analysis_history",
             "local_storage",
+            "progress_data",
+            "progress_meta",
         ]
         for key in managed_keys:
             if key in st.session_state:
@@ -98,6 +100,15 @@ class SessionManager:
         
         if "analysis_history" not in st.session_state:
             st.session_state.analysis_history = []
+
+        if "progress_data" not in st.session_state:
+            st.session_state.progress_data = {}
+
+        if "progress_meta" not in st.session_state:
+            st.session_state.progress_meta = {
+                "last_activity_type": None,
+                "last_saved_at": None
+            }
     
     def get_language_preference(self) -> str:
         """Get user's language preference."""
@@ -117,17 +128,44 @@ class SessionManager:
         st.session_state.current_learning_path = path_id
     
     def save_progress(self, activity_type: str, data: Dict) -> None:
-        """Save learning progress to local storage."""
-        progress_data = {
-            "timestamp": datetime.now().isoformat(),
-            "activity_type": activity_type,
-            "data": data
+        """Save canonical learning progress payload to local storage."""
+        now = datetime.now().isoformat()
+        payload = self._normalize_progress_payload(data)
+
+        st.session_state.progress_data = payload
+        st.session_state.progress_meta = {
+            "last_activity_type": activity_type,
+            "last_saved_at": now
         }
-        self._save_to_local_storage("progress", progress_data)
+
+        self._save_to_local_storage("progress_data", payload)
+        self._save_to_local_storage("progress_meta", st.session_state.progress_meta)
+
+        # Backward compatibility key for older code paths and persisted sessions.
+        self._save_to_local_storage("progress", {
+            "timestamp": now,
+            "activity_type": activity_type,
+            "data": payload
+        })
     
     def load_progress(self) -> Dict:
-        """Load learning progress from local storage."""
-        return self._load_from_local_storage("progress", {})
+        """Load canonical learning progress payload from session/local storage."""
+        in_memory = st.session_state.get("progress_data")
+        if isinstance(in_memory, dict) and in_memory:
+            return in_memory
+
+        persisted = self._load_from_local_storage("progress_data", None)
+        if isinstance(persisted, dict):
+            st.session_state.progress_data = persisted
+            return persisted
+
+        # Backward compatibility: migrate legacy wrapped payload.
+        legacy = self._load_from_local_storage("progress", {})
+        migrated = self._normalize_progress_payload(legacy)
+        if migrated:
+            st.session_state.progress_data = migrated
+            self._save_to_local_storage("progress_data", migrated)
+        return migrated
     
     def get_uploaded_code(self) -> Optional[str]:
         """Get currently uploaded code from session."""
@@ -151,6 +189,31 @@ class SessionManager:
         if "local_storage" not in st.session_state:
             st.session_state.local_storage = {}
         return st.session_state.local_storage.get(storage_key, default)
+
+    def _normalize_progress_payload(self, data) -> Dict:
+        """
+        Normalize progress payload to a flat dictionary.
+
+        Older versions wrapped payloads repeatedly as:
+        {"timestamp": ..., "activity_type": ..., "data": {...}}
+        This helper unwraps nested legacy format safely.
+        """
+        payload = data if isinstance(data, dict) else {}
+
+        # Unwrap nested legacy wrappers.
+        while (
+            isinstance(payload, dict)
+            and "data" in payload
+            and "timestamp" in payload
+            and "activity_type" in payload
+        ):
+            next_payload = payload.get("data")
+            if isinstance(next_payload, dict):
+                payload = next_payload
+            else:
+                return {}
+
+        return payload if isinstance(payload, dict) else {}
     
     # ========================================================================
     # Intent-Driven Analysis Session Methods

@@ -31,6 +31,8 @@ def render_sidebar() -> str:
             "తెలుగు (Telugu)": "telugu"
         }
         st.session_state.selected_language = language_map.get(language, "english")
+        if "session_manager" in st.session_state:
+            st.session_state.session_manager.set_language_preference(st.session_state.selected_language)
         
         st.markdown("---")
         
@@ -48,6 +50,8 @@ def render_sidebar() -> str:
             ("Home", "🏠"),
             ("Upload Code", "📤"),
             ("Codebase Chat", "💬"),
+            ("Explanations", "🧾"),
+            ("Learning Paths", "🛤️"),
             ("Learning Memory", "🧠"),
             ("Progress", "📊")
         ]
@@ -77,6 +81,8 @@ def render_sidebar() -> str:
         
         if st.session_state.get("backend_initialized", False):
             st.success("✓ AI Connected")
+            memory_backend = st.session_state.get("memory_backend", "session")
+            st.caption(f"Memory: {memory_backend}")
         else:
             if st.session_state.get("backend_error"):
                 st.warning("⚠️ Using Mock Data")
@@ -94,7 +100,8 @@ def render_sidebar() -> str:
             1. Upload repository or file
             2. Review Starter Guide
             3. Ask doubts in Codebase Chat
-            4. Practice in Flashcards/Quizzes
+            4. Review Explanations + Learning Paths
+            5. Track memory and progress
             
             **Tip:** Use the sidebar to close/open it
             """)

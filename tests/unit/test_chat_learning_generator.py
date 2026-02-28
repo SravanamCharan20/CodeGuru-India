@@ -64,3 +64,31 @@ def test_quiz_generation_uses_intent_themes_not_raw_chat_echo():
         assert question["correct_answer"] in question["options"]
         assert question.get("intent_type")
         assert question["difficulty"] in {"intermediate", "advanced"}
+
+
+def test_generation_filters_generic_noise_and_keeps_real_concept():
+    generator = ChatLearningGenerator()
+    messages = [
+        {"role": "user", "content": "tell me what is shimmer in this repo and why should we have to use that?"},
+        {
+            "role": "assistant",
+            "content": (
+                "Shimmer is a skeleton loading UI. It improves perceived performance by showing placeholder "
+                "structure before data arrives."
+            ),
+            "metadata": {
+                "code_references": [{"file": "src/components/Shimmer.jsx", "lines": "1-40"}]
+            },
+        },
+    ]
+
+    cards = generator.generate_flashcards(messages, language="english", limit=6)
+    quiz = generator.generate_quiz(messages, language="english", num_questions=2)
+
+    assert cards
+    assert quiz["questions"]
+    assert all("tell" not in card["front"].lower() for card in cards)
+    assert any("shimmer" in card.get("concept", "").lower() for card in cards)
+    for question in quiz["questions"]:
+        assert "tell" not in question["question_text"].lower()
+        assert "tell" not in question["correct_answer"].lower()

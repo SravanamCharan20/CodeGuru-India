@@ -276,5 +276,18 @@ def _render_learning_path(learning_paths):
             
             if st.button(f"Mark as Complete", key=f"complete_{step.step_id}"):
                 st.session_state[f'step_{step.step_id}_completed'] = True
+                progress_tracker = st.session_state.get("progress_tracker")
+                if progress_tracker:
+                    progress_tracker.record_activity(
+                        "topic_completed",
+                        {
+                            "path": path.title,
+                            "topic": step.title,
+                            "topic_name": step.title,
+                            "topic_id": f"{path.path_id}:{step.step_id}",
+                            "skill": path.path_id,
+                            "minutes_spent": step.estimated_time_minutes,
+                        },
+                    )
                 st.success("Step marked as complete!")
                 st.rerun()

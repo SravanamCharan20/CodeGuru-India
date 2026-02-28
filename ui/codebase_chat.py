@@ -6,8 +6,10 @@ Provides ChatGPT-like interface for asking questions about the codebase.
 
 import streamlit as st
 import logging
+import time
 from typing import List, Dict, Any
 from ui.design_system import section_header, spacing
+from utils.performance_metrics import record_metric
 
 logger = logging.getLogger(__name__)
 
@@ -436,6 +438,7 @@ def _process_query(
     output_language: str,
 ):
     """Process user query and generate response."""
+    start_time = time.perf_counter()
     try:
         st.session_state.chat_processing = True
         
@@ -534,6 +537,27 @@ def _process_query(
                     "intents_processed": len(intents),
                 },
             )
+
+        record_metric(
+            "chat_query_total",
+            time.perf_counter() - start_time,
+            {
+                "intents": len(intents),
+                "language": output_language,
+                "query_length": len(query),
+            },
+        )
+
+        progress_tracker = st.session_state.get("progress_tracker")
+        if progress_tracker:
+            progress_tracker.record_activity(
+                "chat_query",
+                {
+                    "topic": query[:80],
+                    "skill": "codebase_chat",
+                    "minutes_spent": max(1, min(8, len(query) // 45)),
+                },
+            )
         
         st.session_state.chat_processing = False
     
@@ -551,6 +575,11 @@ def _process_query(
                 content=f"I encountered an error while processing your question:\n{str(e)}",
                 language=output_language,
             )
+        record_metric(
+            "chat_query_total",
+            time.perf_counter() - start_time,
+            {"error": str(e), "language": output_language},
+        )
         st.session_state.chat_processing = False
 
 

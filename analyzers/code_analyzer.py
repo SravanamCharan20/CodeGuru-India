@@ -306,12 +306,59 @@ class CodeAnalyzer:
         # Simple static checks
         lines = code.split('\n')
         for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            lowered = stripped.lower()
+
             if "TODO" in line or "FIXME" in line:
                 issues.append(Issue(
                     severity="suggestion",
                     line_number=i,
                     description="TODO or FIXME comment found",
                     suggestion="Complete the pending task"
+                ))
+
+            # Security checks
+            if "eval(" in lowered:
+                issues.append(Issue(
+                    severity="critical",
+                    line_number=i,
+                    description="Use of eval() can execute untrusted code",
+                    suggestion="Replace eval() with safe parsing/explicit logic"
+                ))
+
+            if any(token in lowered for token in ["password =", "api_key", "secret_key", "token ="]):
+                if any(quote in stripped for quote in ['"', "'"]):
+                    issues.append(Issue(
+                        severity="warning",
+                        line_number=i,
+                        description="Possible hardcoded secret or credential",
+                        suggestion="Load secrets from environment variables or a secure secret manager"
+                    ))
+
+            # Reliability checks
+            if lowered.startswith("except:"):
+                issues.append(Issue(
+                    severity="warning",
+                    line_number=i,
+                    description="Bare except clause hides real errors",
+                    suggestion="Catch specific exception classes and log context"
+                ))
+
+            if "whiletrue" in lowered.replace(" ", ""):
+                issues.append(Issue(
+                    severity="warning",
+                    line_number=i,
+                    description="Potential infinite loop detected",
+                    suggestion="Add a clear break condition or timeout guard"
+                ))
+
+            # Production hygiene checks
+            if lowered.startswith("print(") or "console.log(" in lowered:
+                issues.append(Issue(
+                    severity="suggestion",
+                    line_number=i,
+                    description="Debug logging statement present",
+                    suggestion="Use structured logging and remove noisy debug output in production"
                 ))
         
         return issues

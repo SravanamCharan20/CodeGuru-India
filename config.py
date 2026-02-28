@@ -25,6 +25,7 @@ class AppConfig:
     max_repo_size_mb: int
     supported_extensions: List[str]
     session_timeout_days: int
+    memory_backend: str
 
 
 def load_config() -> Tuple[AWSConfig, AppConfig]:
@@ -42,7 +43,8 @@ def load_config() -> Tuple[AWSConfig, AppConfig]:
         max_file_size_mb=10,
         max_repo_size_mb=100,
         supported_extensions=[".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".go", ".rb"],
-        session_timeout_days=30
+        session_timeout_days=30,
+        memory_backend=os.getenv("MEMORY_BACKEND", "session").lower()
     )
     
     return aws_config, app_config

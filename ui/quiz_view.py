@@ -194,6 +194,7 @@ def _show_quiz_results():
     st.markdown("### 🎉 Quiz Complete!")
     
     # Calculate results
+    topic = st.session_state.get("current_topic", "Code Quiz")
     quiz = st.session_state.current_quiz
     questions = quiz.questions
     total_questions = len(questions)
@@ -209,6 +210,22 @@ def _show_quiz_results():
     
     # Calculate time taken
     time_taken = int((time.time() - st.session_state.quiz_start_time) / 60) if st.session_state.quiz_start_time else 0
+
+    # Record progress once per completed quiz attempt.
+    progress_tracker = st.session_state.get("progress_tracker")
+    quiz_id = getattr(quiz, "id", "quiz")
+    result_key = f"{quiz_id}:{score_percentage}:{total_questions}"
+    if progress_tracker and st.session_state.get("recorded_quiz_result_key") != result_key:
+        progress_tracker.record_activity(
+            "quiz_taken",
+            {
+                "topic": topic,
+                "score": score_percentage,
+                "skill": "quiz",
+                "minutes_spent": max(1, time_taken),
+            },
+        )
+        st.session_state.recorded_quiz_result_key = result_key
     
     spacing("md")
     
@@ -267,6 +284,8 @@ def _show_quiz_results():
             st.session_state.quiz_score = 0
             if "scored_questions" in st.session_state:
                 del st.session_state.scored_questions
+            if "recorded_quiz_result_key" in st.session_state:
+                del st.session_state.recorded_quiz_result_key
             # Clear shuffled options
             keys_to_delete = [key for key in st.session_state.keys() if key.startswith("shuffled_options_")]
             for key in keys_to_delete:

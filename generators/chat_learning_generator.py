@@ -6,7 +6,17 @@ from dataclasses import dataclass, field
 import random
 import re
 import uuid
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence
+
+
+@dataclass
+class ChatExchange:
+    """A paired user question and assistant response."""
+
+    question: str
+    answer: str
+    question_metadata: Dict[str, Any] = field(default_factory=dict)
+    answer_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -14,11 +24,14 @@ class IntentTheme:
     """Intent cluster extracted from user chat questions."""
 
     key: str
+    concept: str
     intent_type: str
     objective: str
     representative_question: str
     keywords: List[str] = field(default_factory=list)
     answer_points: List[str] = field(default_factory=list)
+    code_references: List[str] = field(default_factory=list)
+    intent_counts: Dict[str, int] = field(default_factory=dict)
     support_count: int = 0
 
 
@@ -87,6 +100,27 @@ class ChatLearningGenerator:
         "learn",
         "show",
         "tell",
+        "give",
+        "have",
+        "need",
+        "want",
+        "use",
+    }
+
+    GENERIC_CONCEPTS = {
+        "what",
+        "why",
+        "how",
+        "tell",
+        "code",
+        "codebase",
+        "repo",
+        "repository",
+        "project",
+        "question",
+        "answer",
+        "feature",
+        "thing",
     }
 
     INTENT_PATTERNS = {
@@ -106,6 +140,7 @@ class ChatLearningGenerator:
             r"\bpipeline\b",
             r"\bend[- ]to[- ]end\b",
             r"\bsequence\b",
+            r"\brouting\b",
         ],
         "architecture": [
             r"\barchitecture\b",
@@ -114,6 +149,7 @@ class ChatLearningGenerator:
             r"\blayer\b",
             r"\bpattern\b",
             r"\bcomponent\b",
+            r"\bstructure\b",
         ],
         "debugging": [
             r"\bbug\b",
@@ -151,55 +187,46 @@ class ChatLearningGenerator:
         limit: int = 12,
     ) -> List[Dict[str, Any]]:
         """Generate challenge-oriented flashcards from extracted user intent themes."""
-        pairs = self._extract_qa_pairs(chat_messages)
-        themes = self._extract_intent_themes(pairs)
+        exchanges = self._extract_qa_pairs(chat_messages)
+        themes = self._extract_intent_themes(exchanges)
         cards: List[Dict[str, Any]] = []
+        seen_fronts = set()
 
         if not themes:
             return cards
 
+        card_builders = [
+            ("core", self._front_recall, self._back_core),
+            ("reasoning", self._front_reasoning, self._back_reasoning),
+            ("application", self._front_apply, self._back_application),
+            ("misconception", self._front_misconception, self._back_misconception),
+        ]
+
         for theme in themes:
-            cards.append(
-                {
-                    "id": str(uuid.uuid4()),
-                    "front": self._front_recall(theme, language),
-                    "back": self._back_core(theme),
-                    "topic": self._topic_from_theme(theme),
-                    "difficulty": self._difficulty(theme),
-                    "language": language,
-                    "intent_type": theme.intent_type,
-                }
-            )
-            if len(cards) >= limit:
-                break
+            for challenge_type, front_builder, back_builder in card_builders:
+                front = self._clean_text(front_builder(theme, language), 240)
+                front_key = front.lower()
+                if front_key in seen_fronts:
+                    continue
 
-            cards.append(
-                {
-                    "id": str(uuid.uuid4()),
-                    "front": self._front_apply(theme, language),
-                    "back": self._back_application(theme),
-                    "topic": self._topic_from_theme(theme),
-                    "difficulty": "advanced",
-                    "language": language,
-                    "intent_type": theme.intent_type,
-                }
-            )
-            if len(cards) >= limit:
-                break
+                seen_fronts.add(front_key)
+                cards.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "front": front,
+                        "back": self._clean_text(back_builder(theme), 900),
+                        "topic": self._topic_from_theme(theme),
+                        "difficulty": self._difficulty(theme, challenge_type),
+                        "language": language,
+                        "intent_type": theme.intent_type,
+                        "concept": theme.concept,
+                        "objective": theme.objective,
+                        "challenge_type": challenge_type,
+                    }
+                )
 
-            cards.append(
-                {
-                    "id": str(uuid.uuid4()),
-                    "front": self._front_misconception(theme, language),
-                    "back": self._back_misconception(theme),
-                    "topic": self._topic_from_theme(theme),
-                    "difficulty": "advanced",
-                    "language": language,
-                    "intent_type": theme.intent_type,
-                }
-            )
-            if len(cards) >= limit:
-                break
+                if len(cards) >= limit:
+                    return cards[:limit]
 
         return cards[:limit]
 
@@ -210,29 +237,34 @@ class ChatLearningGenerator:
         num_questions: int = 6,
     ) -> Dict[str, Any]:
         """Generate challenging MCQs from user intent themes."""
-        pairs = self._extract_qa_pairs(chat_messages)
-        themes = self._extract_intent_themes(pairs)
+        exchanges = self._extract_qa_pairs(chat_messages)
+        themes = self._extract_intent_themes(exchanges)
         questions: List[Dict[str, Any]] = []
 
         for index, theme in enumerate(themes[:num_questions], start=1):
             correct = self._build_correct_option(theme)
-            distractors = self._build_distractors(theme, correct)
-            options = [correct] + distractors[:3]
+            distractors = self._build_distractors(theme, correct, index)
+            options = self._ensure_unique_options([correct] + distractors)[:4]
+            if len(options) < 4:
+                options += self._fill_quiz_options(theme, options, target=4)
+            options = options[:4]
 
-            rnd = random.Random(theme.key)
+            rnd = random.Random(f"{theme.key}:{index}")
             rnd.shuffle(options)
 
             questions.append(
                 {
                     "id": str(index),
                     "type": "multiple_choice",
-                    "question_text": self._quiz_prompt(theme, language),
+                    "question_text": self._quiz_prompt(theme, language, index),
                     "options": options,
                     "correct_answer": correct,
                     "explanation": self._quiz_explanation(theme),
                     "language": language,
                     "intent_type": theme.intent_type,
-                    "difficulty": self._difficulty(theme),
+                    "difficulty": self._difficulty(theme, "reasoning"),
+                    "concept": theme.concept,
+                    "objective": theme.objective,
                 }
             )
 
@@ -240,68 +272,128 @@ class ChatLearningGenerator:
             "id": f"chat_quiz_{uuid.uuid4().hex[:8]}",
             "topic": "Intent-Driven Chat Revision",
             "questions": questions,
-            "time_limit_minutes": max(1, len(questions) * 2),
+            "time_limit_minutes": max(2, len(questions) * 2),
             "language": language,
         }
 
-    def _extract_qa_pairs(self, chat_messages: Sequence[Dict[str, Any]]) -> List[Tuple[str, str]]:
-        pairs: List[Tuple[str, str]] = []
+    def _extract_qa_pairs(self, chat_messages: Sequence[Dict[str, Any]]) -> List[ChatExchange]:
+        pairs: List[ChatExchange] = []
         pending_question = ""
+        pending_metadata: Dict[str, Any] = {}
 
         for message in chat_messages:
             role = message.get("role")
-            content = self._clean_text(message.get("content", ""), 4000)
+            content = self._clean_text(message.get("content", ""), 7000)
+            metadata = message.get("metadata", {}) if isinstance(message.get("metadata"), dict) else {}
             if not content:
                 continue
 
             if role == "user":
                 pending_question = content
+                pending_metadata = metadata
                 continue
 
             if role == "assistant" and pending_question:
-                pairs.append((pending_question, content))
+                pairs.append(
+                    ChatExchange(
+                        question=pending_question,
+                        answer=content,
+                        question_metadata=pending_metadata,
+                        answer_metadata=metadata,
+                    )
+                )
                 pending_question = ""
+                pending_metadata = {}
 
         return pairs
 
-    def _extract_intent_themes(self, pairs: Sequence[Tuple[str, str]]) -> List[IntentTheme]:
+    def _extract_intent_themes(self, pairs: Sequence[ChatExchange]) -> List[IntentTheme]:
         themes: Dict[str, IntentTheme] = {}
 
-        for question, answer in pairs:
-            intent_type = self._classify_intent(question)
-            keywords = self._extract_keywords(question)
-            key = self._theme_key(intent_type, keywords, question)
-            point = self._summarize_answer(answer)
+        for pair in pairs:
+            intent_type = self._classify_intent(pair.question)
+            question_keywords = self._extract_keywords(pair.question, max_keywords=10)
+            answer_keywords = self._extract_keywords(pair.answer, max_keywords=8)
+            ref_keywords, formatted_refs = self._extract_reference_signals(pair.answer_metadata)
+
+            concept = self._derive_concept(pair.question, question_keywords, ref_keywords)
+            if not concept:
+                concept = self._derive_concept(pair.answer, answer_keywords, ref_keywords)
+            if not concept or self._is_generic_concept(concept):
+                continue
+
+            key = self._theme_key(concept)
+            point = self._summarize_answer(pair.answer)
 
             if key not in themes:
                 themes[key] = IntentTheme(
                     key=key,
+                    concept=concept,
                     intent_type=intent_type,
-                    objective=self._build_objective(intent_type, keywords),
-                    representative_question=question,
-                    keywords=keywords[:6],
+                    objective="",
+                    representative_question=pair.question,
+                    keywords=[],
                     answer_points=[],
+                    code_references=[],
+                    intent_counts={},
                     support_count=0,
                 )
 
             theme = themes[key]
             theme.support_count += 1
-            if point:
-                theme.answer_points.append(point)
+            theme.intent_counts[intent_type] = theme.intent_counts.get(intent_type, 0) + 1
+            theme.intent_type = self._dominant_intent(theme.intent_counts)
 
-            # Merge keywords to enrich theme signals.
-            merged = theme.keywords + [kw for kw in keywords if kw not in theme.keywords]
-            theme.keywords = merged[:8]
+            theme.keywords = self._merge_unique(
+                theme.keywords,
+                question_keywords + answer_keywords + ref_keywords,
+                limit=12,
+            )
+
+            if point:
+                theme.answer_points = self._merge_unique(theme.answer_points, [point], limit=4)
+
+            if formatted_refs:
+                theme.code_references = self._merge_unique(theme.code_references, formatted_refs, limit=4)
+
+            theme.objective = self._build_objective(theme)
+
+        # Fallback: keep at least one theme when chat has a valid QA pair.
+        if not themes and pairs:
+            last_pair = pairs[-1]
+            fallback_keywords = self._extract_keywords(last_pair.question)
+            fallback_concept = self._derive_concept(last_pair.question, fallback_keywords, [])
+            if fallback_concept:
+                fallback = IntentTheme(
+                    key=self._theme_key(fallback_concept),
+                    concept=fallback_concept,
+                    intent_type=self._classify_intent(last_pair.question),
+                    objective=f"Explain how {fallback_concept} works in this repository.",
+                    representative_question=last_pair.question,
+                    keywords=fallback_keywords[:8],
+                    answer_points=[self._summarize_answer(last_pair.answer)],
+                    code_references=[],
+                    intent_counts={self._classify_intent(last_pair.question): 1},
+                    support_count=1,
+                )
+                themes[fallback.key] = fallback
 
         ordered = sorted(
             themes.values(),
-            key=lambda t: (t.support_count * 2 + len(t.keywords)),
+            key=self._theme_score,
             reverse=True,
         )
         return ordered
 
     def _classify_intent(self, question: str) -> str:
-        q = question.lower()
+        q = question.lower().strip()
+        if re.match(r"^why\b", q):
+            return "why"
+        if re.match(r"^how\b", q):
+            return "how"
+        if re.match(r"^what\b", q):
+            return "what"
+
         for intent_type, patterns in self.INTENT_PATTERNS.items():
             if any(re.search(pattern, q) for pattern in patterns):
                 return intent_type
@@ -321,129 +413,317 @@ class ChatLearningGenerator:
                 break
         return ordered
 
-    def _theme_key(self, intent_type: str, keywords: List[str], question: str) -> str:
-        if keywords:
-            return f"{intent_type}:{'|'.join(keywords[:3])}"
-        fallback = re.sub(r"[^a-z0-9]+", "_", question.lower()).strip("_")
-        return f"{intent_type}:{fallback[:30] or 'general'}"
+    def _extract_reference_signals(self, metadata: Dict[str, Any]) -> tuple[List[str], List[str]]:
+        refs = metadata.get("code_references") if isinstance(metadata, dict) else []
+        if not isinstance(refs, list):
+            return [], []
 
-    def _build_objective(self, intent_type: str, keywords: List[str]) -> str:
-        focus = " ".join(keywords[:3]) if keywords else "the relevant code behavior"
-        templates = {
-            "security": f"Master security behavior around {focus}",
-            "flow": f"Trace end-to-end flow for {focus}",
-            "architecture": f"Explain architectural responsibility for {focus}",
-            "debugging": f"Diagnose failure causes around {focus}",
-            "performance": f"Reason about performance impact of {focus}",
-            "comparison": f"Evaluate trade-offs in {focus}",
-            "explanation": f"Explain implementation details of {focus}",
-        }
-        return templates.get(intent_type, templates["explanation"])
+        keywords: List[str] = []
+        formatted_refs: List[str] = []
+
+        for ref in refs[:6]:
+            if not isinstance(ref, dict):
+                continue
+
+            file_path = ref.get("file", "")
+            lines = ref.get("lines", "")
+            if file_path:
+                formatted = f"{file_path}:{lines}" if lines else file_path
+                formatted_refs.append(formatted)
+
+                basename = file_path.split("/")[-1]
+                stem = basename.split(".")[0]
+                stem_parts = re.split(r"[_\W]+", stem.lower())
+                for part in stem_parts:
+                    if part and part not in self.STOP_WORDS and len(part) >= 3:
+                        keywords.append(part)
+
+        return self._merge_unique([], keywords, limit=8), self._merge_unique([], formatted_refs, limit=4)
+
+    def _derive_concept(self, text: str, keywords: List[str], ref_keywords: List[str]) -> str:
+        quoted = re.findall(r"['\"]([a-zA-Z_][a-zA-Z0-9_\-\s]{1,80})['\"]", text)
+        for candidate in quoted:
+            concept = self._normalize_concept(candidate)
+            if concept:
+                return concept
+
+        patterns = [
+            r"(?:what is|what's|how does|how do|why do we use|why should we use|why use|explain|describe)\s+([a-zA-Z_][a-zA-Z0-9_\-\s]{2,100})",
+            r"(?:about|for)\s+([a-zA-Z_][a-zA-Z0-9_\-\s]{2,80})",
+        ]
+        lowered = text.lower()
+        for pattern in patterns:
+            match = re.search(pattern, lowered)
+            if not match:
+                continue
+            concept = self._normalize_concept(match.group(1))
+            if concept:
+                return concept
+
+        for source in (keywords, ref_keywords):
+            for token in source:
+                concept = self._normalize_concept(token)
+                if concept:
+                    return concept
+
+        return ""
+
+    def _normalize_concept(self, concept: str) -> str:
+        clean = (concept or "").lower().strip()
+        if not clean:
+            return ""
+
+        clean = re.sub(r"\s+", " ", clean)
+        for splitter in [" in this repo", " in the repo", " in repo", " and why", " and how", " and what"]:
+            if splitter in clean:
+                clean = clean.split(splitter, 1)[0].strip()
+
+        clean = re.sub(r"[^a-z0-9_\-\s]", " ", clean)
+        tokens = [tok for tok in clean.split() if tok and tok not in self.STOP_WORDS and tok not in self.GENERIC_CONCEPTS]
+        if not tokens:
+            return ""
+
+        compact = " ".join(tokens[:3])
+        if self._is_generic_concept(compact):
+            return ""
+        return compact
+
+    def _is_generic_concept(self, concept: str) -> bool:
+        lowered = concept.lower().strip()
+        if not lowered:
+            return True
+        if lowered in self.GENERIC_CONCEPTS:
+            return True
+        if len(lowered) <= 2:
+            return True
+        return all(token in self.STOP_WORDS or token in self.GENERIC_CONCEPTS for token in lowered.split())
+
+    def _theme_key(self, concept: str) -> str:
+        normalized = re.sub(r"[^a-z0-9]+", "_", concept.lower()).strip("_")
+        return normalized[:50] or "general_concept"
+
+    def _build_objective(self, theme: IntentTheme) -> str:
+        concept = theme.concept
+        dominant = theme.intent_type
+
+        if dominant == "why":
+            return f"Explain why '{concept}' is used and what trade-offs it solves."
+        if dominant == "how":
+            return f"Trace how '{concept}' works end-to-end across the codebase."
+        if dominant == "comparison":
+            return f"Compare alternatives around '{concept}' and justify the chosen implementation."
+        if dominant == "debugging":
+            return f"Diagnose failure points and debugging strategy for '{concept}'."
+        if dominant == "performance":
+            return f"Reason about performance impact of '{concept}' and optimization boundaries."
+        if dominant == "security":
+            return f"Understand security responsibilities and validation flow in '{concept}'."
+        if dominant == "flow":
+            return f"Map request/data flow involving '{concept}' from entry to side-effects."
+        if dominant == "architecture":
+            return f"Explain architectural role and dependencies of '{concept}'."
+        return f"Build a precise mental model of '{concept}' in this repository."
 
     def _summarize_answer(self, answer: str) -> str:
         # Keep first 1-2 high-signal sentences.
         sentences = re.split(r"(?<=[.!?])\s+", answer.strip())
-        compact = " ".join(s.strip() for s in sentences[:2] if s.strip())
+        compact = " ".join(s.strip() for s in sentences if s.strip() and len(s.strip()) > 15)
+        compact = compact if compact else answer.strip()
         return self._clean_text(compact, 220)
 
-    def _difficulty(self, theme: IntentTheme) -> str:
-        if theme.support_count >= 2 or theme.intent_type in {"architecture", "performance", "comparison"}:
+    def _difficulty(self, theme: IntentTheme, challenge_type: str = "core") -> str:
+        advanced_intents = {"architecture", "performance", "comparison", "debugging", "security"}
+        if challenge_type in {"reasoning", "application"}:
             return "advanced"
-        if theme.intent_type in {"flow", "security", "debugging"}:
-            return "intermediate"
+        if theme.support_count >= 2:
+            return "advanced"
+        if theme.intent_type in advanced_intents:
+            return "advanced"
         return "intermediate"
 
     def _topic_from_theme(self, theme: IntentTheme) -> str:
-        if theme.keywords:
-            return f"{theme.intent_type.title()}: {', '.join(theme.keywords[:2])}"
-        return theme.intent_type.title()
+        return f"{theme.concept.title()} ({theme.intent_type})"
 
     def _front_recall(self, theme: IntentTheme, language: str) -> str:
         if language == "hindi":
-            return f"गहराई से समझाएं: {theme.objective} को इस कोडबेस में कैसे लागू किया गया है?"
+            return f"कोर समझ: इस repo में '{theme.concept}' की जिम्मेदारी क्या है?"
         if language == "telugu":
-            return f"లోతుగా వివరించండి: {theme.objective} ఈ కోడ్‌బేస్‌లో ఎలా అమలు అయింది?"
-        return f"Deep explain: how is '{theme.objective}' implemented in this codebase?"
+            return f"ప్రధాన అర్థం: ఈ repoలో '{theme.concept}' బాధ్యత ఏమిటి?"
+        return f"Core understanding: what responsibility does '{theme.concept}' have in this repository?"
+
+    def _front_reasoning(self, theme: IntentTheme, language: str) -> str:
+        if language == "hindi":
+            return f"रीज़निंग चेक: '{theme.concept}' को ऐसे design करने की मुख्य वजह क्या है?"
+        if language == "telugu":
+            return f"రీజనింగ్ చెక్: '{theme.concept}' ఇలా design చేయడానికి ప్రధాన కారణం ఏమిటి?"
+        return f"Reasoning check: why is '{theme.concept}' implemented this way in this codebase?"
 
     def _front_apply(self, theme: IntentTheme, language: str) -> str:
-        key = theme.keywords[0] if theme.keywords else "this module"
         if language == "hindi":
-            return f"परिदृश्य: अगर {key} बदलता है, तो कौन सा flow पहले प्रभावित होगा और क्यों?"
+            return f"Scenario challenge: अगर '{theme.concept}' बदलें, तो कौन सा behavior पहले टूटेगा और क्यों?"
         if language == "telugu":
-            return f"సినారియో: {key} మారితే ముందుగా ఏ flow ప్రభావితం అవుతుంది? ఎందుకు?"
-        return f"Scenario challenge: if '{key}' changes, which flow breaks first and why?"
+            return f"Scenario challenge: '{theme.concept}' మార్చితే ముందుగా ఏ behavior break అవుతుంది? ఎందుకు?"
+        return f"Scenario challenge: if '{theme.concept}' changes, what breaks first and why?"
 
     def _front_misconception(self, theme: IntentTheme, language: str) -> str:
         if language == "hindi":
-            return f"गलतफहमी जांच: क्या {theme.objective.lower()} सिर्फ एक layer की जिम्मेदारी है?"
+            return f"Misconception check: क्या '{theme.concept}' सिर्फ एक file तक सीमित है?"
         if language == "telugu":
-            return f"మిస్‌కాన్సెప్షన్ చెక్: {theme.objective.lower()} ఒకే layer బాధ్యతేనా?"
-        return f"Misconception check: is '{theme.objective.lower()}' handled by only one layer?"
+            return f"Misconception check: '{theme.concept}' ఒకే file లో మాత్రమే పరిమితమైందా?"
+        return f"Misconception check: is '{theme.concept}' isolated to a single file?"
 
     def _back_core(self, theme: IntentTheme) -> str:
-        summary = "; ".join(theme.answer_points[:2]) or "Derived from your prior chat explanation."
-        keywords = ", ".join(theme.keywords[:5]) if theme.keywords else "core behavior"
+        summary = "; ".join(theme.answer_points[:2]) or "Based on your chat discussion."
+        refs = ", ".join(theme.code_references[:3]) if theme.code_references else "Use referenced files from the chat response."
         return (
             f"Core idea: {summary}\n\n"
-            f"Intent focus: {theme.objective}\n"
-            f"Key terms to revisit: {keywords}\n"
-            f"Challenge prompt: explain this without using generic words like 'it works'."
+            f"Learning objective: {theme.objective}\n"
+            f"Code anchors: {refs}\n"
+            "Self-check: explain this in your own words without generic filler."
+        )
+
+    def _back_reasoning(self, theme: IntentTheme) -> str:
+        primary = theme.answer_points[0] if theme.answer_points else "Use dependency direction and contracts as reasoning anchors."
+        return (
+            f"Best reasoning path: {primary}\n\n"
+            f"Why this matters: '{theme.concept}' often coordinates behavior across modules, not just one line of code.\n"
+            "Verification: follow call path, validate assumptions, and confirm side-effects."
         )
 
     def _back_application(self, theme: IntentTheme) -> str:
-        summary = theme.answer_points[0] if theme.answer_points else "Use the chat explanation to map dependencies."
-        primary = theme.keywords[0] if theme.keywords else "the entry point"
-        secondary = theme.keywords[1] if len(theme.keywords) > 1 else "dependent modules"
+        key_terms = ", ".join(theme.keywords[:4]) if theme.keywords else theme.concept
         return (
-            f"Likely impact path: changes in {primary} propagate to {secondary} and then to downstream handlers.\n\n"
-            f"Reasoning anchor from chat: {summary}\n"
-            f"Verification checklist: trace call chain, validate contracts, retest integration boundaries."
+            f"Likely impact area: start from '{theme.concept}', then trace adjacent modules linked to {key_terms}.\n\n"
+            "Execution checklist: identify entry point -> inspect contracts -> run affected flow-level tests."
         )
 
     def _back_misconception(self, theme: IntentTheme) -> str:
+        refs = ", ".join(theme.code_references[:2]) if theme.code_references else "cross-file chat references"
         return (
-            "False.\n\n"
-            f"{theme.objective} usually spans multiple layers (entry, orchestration, validation, and side effects). "
-            "Use cross-file references from chat explanations to verify each step."
+            "No. In most codebases this concept is cross-cutting.\n\n"
+            f"For '{theme.concept}', verify upstream and downstream dependencies using: {refs}."
         )
 
     def _build_correct_option(self, theme: IntentTheme) -> str:
         summary = theme.answer_points[0] if theme.answer_points else theme.objective
-        return self._clean_text(
-            f"Trace dependency boundaries and execution order first; {summary}",
-            180,
-        )
+        text = f"Start from '{theme.concept}' responsibilities and dependency flow; {summary}"
+        return self._clean_text(text, 180)
 
-    def _build_distractors(self, theme: IntentTheme, correct: str) -> List[str]:
-        key = theme.keywords[0] if theme.keywords else "this feature"
-        distractors = [
-            f"Only UI rendering matters for {key}; backend flow can be ignored.",
-            f"{key} behavior is configured entirely by environment variables, not code paths.",
-            f"Treat every module as independent; cross-file dependencies do not affect outcomes.",
-            f"Focus only on syntax-level details of {key}; runtime flow is not relevant.",
+    def _build_distractors(self, theme: IntentTheme, correct: str, seed_index: int) -> List[str]:
+        concept = theme.concept
+        base = [
+            f"'{concept}' is only naming/style and has no runtime effect.",
+            f"'{concept}' works in a single isolated file, so cross-file flow is irrelevant.",
+            f"'{concept}' is only for tests/build scripts and not production behavior.",
+            f"'{concept}' removes the need for validation, contracts, and error handling.",
         ]
 
+        if theme.intent_type in {"performance", "flow"}:
+            base.append(f"Performance and request path around '{concept}' can be inferred without reading call order.")
+        if theme.intent_type in {"security", "debugging"}:
+            base.append(f"Debugging '{concept}' should start from UI labels, not execution traces.")
+
         unique: List[str] = []
-        for option in distractors:
+        for option in base:
             trimmed = self._clean_text(option, 180)
             if trimmed != correct and trimmed not in unique:
                 unique.append(trimmed)
+
+        rnd = random.Random(f"{theme.key}:{seed_index}:distractors")
+        rnd.shuffle(unique)
         return unique
 
-    def _quiz_prompt(self, theme: IntentTheme, language: str) -> str:
-        base = theme.objective
+    def _fill_quiz_options(self, theme: IntentTheme, options: List[str], target: int) -> List[str]:
+        fill = [
+            f"Treat '{theme.concept}' as documentation-only and skip runtime validation.",
+            f"Analyze '{theme.concept}' by syntax alone; no need to inspect flow or dependencies.",
+            f"Assume '{theme.concept}' has no integration boundaries with other modules.",
+        ]
+        additions: List[str] = []
+        for value in fill:
+            trimmed = self._clean_text(value, 180)
+            if trimmed not in options and trimmed not in additions:
+                additions.append(trimmed)
+            if len(options) + len(additions) >= target:
+                break
+        return additions
+
+    def _quiz_prompt(self, theme: IntentTheme, language: str, question_index: int) -> str:
+        variant = question_index % 3
         if language == "hindi":
-            return f"Scenario: {base} के लिए सबसे सही reasoning क्या है?"
+            prompts = [
+                f"Scenario: '{theme.concept}' की role समझाने के लिए सबसे सही reasoning कौन सी है?",
+                f"Scenario: अगर '{theme.concept}' में change हो, तो impact analysis का सही पहला कदम क्या होगा?",
+                f"Scenario: '{theme.concept}' के बारे में कौन सा कथन सबसे तकनीकी रूप से सही है?",
+            ]
+            return prompts[variant]
+
         if language == "telugu":
-            return f"Scenario: {base} కోసం సరైన reasoning ఏది?"
-        return f"Scenario: for '{base}', what is the best reasoning path?"
+            prompts = [
+                f"Scenario: '{theme.concept}' పాత్రను అర్థం చేసుకోవడానికి సరైన reasoning ఏది?",
+                f"Scenario: '{theme.concept}' మారితే impact analysis లో సరైన first step ఏది?",
+                f"Scenario: '{theme.concept}' గురించి ఏ statement technical గా సరైనది?",
+            ]
+            return prompts[variant]
+
+        prompts = [
+            f"Scenario: which reasoning best explains the role of '{theme.concept}' in this repository?",
+            f"Scenario: if '{theme.concept}' changes, what is the most reliable first step for impact analysis?",
+            f"Scenario: which statement about '{theme.concept}' is technically correct for this codebase?",
+        ]
+        return prompts[variant]
 
     def _quiz_explanation(self, theme: IntentTheme) -> str:
-        source = theme.answer_points[0] if theme.answer_points else "your previous assistant response"
+        source = theme.answer_points[0] if theme.answer_points else "the validated assistant explanation from your chat"
+        refs = ", ".join(theme.code_references[:2]) if theme.code_references else "chat code references"
         return (
-            f"This checks intent-level understanding ({theme.intent_type}). "
-            f"Correct reasoning comes from: {source}"
+            f"This question tests concept-level reasoning for '{theme.concept}' ({theme.intent_type}). "
+            f"Use this anchor: {source}. Verify against: {refs}."
         )
+
+    def _theme_score(self, theme: IntentTheme) -> float:
+        return (
+            theme.support_count * 3.0
+            + len(theme.intent_counts) * 2.0
+            + len(theme.code_references) * 1.5
+            + len(theme.answer_points)
+            + len(theme.keywords) * 0.2
+        )
+
+    def _dominant_intent(self, counts: Dict[str, int]) -> str:
+        if not counts:
+            return "explanation"
+        return max(counts, key=lambda key: counts[key])
+
+    def _merge_unique(self, base: List[str], additions: Sequence[str], limit: int) -> List[str]:
+        merged = list(base)
+        seen = {item.lower() for item in merged if isinstance(item, str)}
+        for item in additions:
+            if not isinstance(item, str):
+                continue
+            clean = item.strip()
+            if not clean:
+                continue
+            lowered = clean.lower()
+            if lowered in seen:
+                continue
+            merged.append(clean)
+            seen.add(lowered)
+            if len(merged) >= limit:
+                break
+        return merged
+
+    def _ensure_unique_options(self, options: Sequence[str]) -> List[str]:
+        unique: List[str] = []
+        seen = set()
+        for option in options:
+            clean = self._clean_text(option, 180)
+            key = clean.lower()
+            if not clean or key in seen:
+                continue
+            unique.append(clean)
+            seen.add(key)
+        return unique
 
     def _clean_text(self, text: str, max_len: int) -> str:
         sanitized = re.sub(r"\s+", " ", text or "").strip()

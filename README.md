@@ -11,6 +11,7 @@ An AI-powered code learning platform designed to help Indian developers learn fa
 - 📊 **Progress Tracking** - Monitor your growth with detailed analytics
 - 🎯 **Simple Analogies** - Complex concepts explained with culturally relevant examples
 - 📈 **Visual Diagrams** - Auto-generated flowcharts, class diagrams, and architecture views
+- 🧠 **Learning Memory Modes** - Zero-DB session memory (default) or optional SQLite persistence
 
 ### 🧠 Intent-Driven Repository Analysis (NEW!)
 - 🎯 **Natural Language Goals** - Describe what you want to learn in plain language
@@ -47,6 +48,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env with your AWS credentials
+# Optional: set MEMORY_BACKEND=session (default) or sqlite
 ```
 
 4. Run the application:

@@ -9,10 +9,12 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 from dataclasses import asdict, is_dataclass
 from typing import Optional
 from ui.design_system import section_header, spacing, info_box
 from ui.learning_artifacts_dashboard import render_learning_artifacts_dashboard
+from utils.performance_metrics import record_metric
 
 logger = logging.getLogger(__name__)
 
@@ -257,9 +259,19 @@ def _render_repo_starter_guide(result, session_manager):
     for prompt in _build_chat_starter_prompts(starter_files):
         st.code(prompt, language="text")
 
-    if st.button("💬 Open Codebase Chat", use_container_width=True):
-        st.session_state.current_page = "Codebase Chat"
-        st.rerun()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("💬 Open Codebase Chat", use_container_width=True):
+            st.session_state.current_page = "Codebase Chat"
+            st.rerun()
+    with col2:
+        if st.button("🧾 Open Explanations", use_container_width=True):
+            st.session_state.current_page = "Explanations"
+            st.rerun()
+    with col3:
+        if st.button("🛤️ Open Learning Paths", use_container_width=True):
+            st.session_state.current_page = "Learning Paths"
+            st.rerun()
 
 
 def _complexity_label(score: int) -> str:
@@ -653,7 +665,8 @@ def _render_voice_query(session_manager):
                 st.session_state.chat_input = st.session_state.voice_query
                 st.session_state.current_page = "Codebase Chat"
                 st.rerun()
-            st.error("Upload a repository first, then ask voice/text questions in Codebase Chat.")
+            else:
+                st.error("Upload a repository first, then ask voice/text questions in Codebase Chat.")
 
 
 def _show_upload_summary(session_manager):
@@ -797,6 +810,7 @@ def _run_quick_analysis(session_manager, code_analyzer, flashcard_manager):
         return
     
     with st.spinner("Analyzing code..."):
+        start_time = time.perf_counter()
         try:
             analysis_session_id = _ensure_memory_session(
                 source_type="code",
@@ -844,12 +858,34 @@ def _run_quick_analysis(session_manager, code_analyzer, flashcard_manager):
                     flashcards_serialized,
                     replace=True,
                 )
+
+            record_metric(
+                "quick_analysis_total",
+                time.perf_counter() - start_time,
+                {"mode": "quick", "filename": filename},
+            )
+
+            progress_tracker = st.session_state.get("progress_tracker")
+            if progress_tracker:
+                progress_tracker.record_activity(
+                    "analysis_completed",
+                    {
+                        "topic": filename,
+                        "skill": "quick_analysis",
+                        "minutes_spent": 10,
+                    },
+                )
             
             st.success("✅ Analysis complete!")
             st.session_state.workflow_step = 'results'
             st.rerun()
         
         except Exception as e:
+            record_metric(
+                "quick_analysis_total",
+                time.perf_counter() - start_time,
+                {"mode": "quick", "filename": filename, "error": str(e)},
+            )
             logger.error(f"Quick analysis failed: {e}")
             st.error(f"Analysis failed: {str(e)}")
 
@@ -863,6 +899,7 @@ def _run_deep_analysis(orchestrator, session_manager):
         return
     
     with st.spinner("Running deep analysis..."):
+        start_time = time.perf_counter()
         try:
             repo_path = repo_context.get('repo_path')
             repo_analysis = repo_context.get('repo_analysis')
@@ -879,7 +916,13 @@ def _run_deep_analysis(orchestrator, session_manager):
             # Index repository for semantic search
             if 'semantic_search' in st.session_state:
                 with st.spinner("Indexing codebase for intelligent search..."):
+                    index_start = time.perf_counter()
                     st.session_state.semantic_search.index_repository(repo_path, repo_analysis)
+                    record_metric(
+                        "repository_indexing",
+                        time.perf_counter() - index_start,
+                        {"repo_path": repo_path},
+                    )
                     st.success("✓ Codebase indexed - you can now use Codebase Chat!")
             
             # Run complete workflow
@@ -912,11 +955,32 @@ def _run_deep_analysis(orchestrator, session_manager):
                     )
                 
                 st.session_state.pending_learning_goal = ""
+                record_metric(
+                    "deep_analysis_total",
+                    time.perf_counter() - start_time,
+                    {"mode": "deep", "repo_path": repo_path},
+                )
+
+                progress_tracker = st.session_state.get("progress_tracker")
+                if progress_tracker:
+                    progress_tracker.record_activity(
+                        "analysis_completed",
+                        {
+                            "topic": user_input,
+                            "skill": "deep_analysis",
+                            "minutes_spent": 20,
+                        },
+                    )
                 st.success("✅ Deep analysis complete!")
                 st.session_state.workflow_step = 'results'
                 st.rerun()
         
         except Exception as e:
+            record_metric(
+                "deep_analysis_total",
+                time.perf_counter() - start_time,
+                {"mode": "deep", "error": str(e)},
+            )
             logger.error(f"Deep analysis failed: {e}")
             st.error(f"Analysis failed: {str(e)}")
 

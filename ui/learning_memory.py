@@ -67,7 +67,7 @@ def render_learning_memory(session_manager, memory_store, chat_learning_generato
                 st.rerun()
         with actions_col2:
             if st.button(
-                "Generate Flashcards",
+                "Generate Smart Flashcards",
                 use_container_width=True,
                 disabled=(not chat_messages or not chat_learning_generator),
             ):
@@ -80,7 +80,7 @@ def render_learning_memory(session_manager, memory_store, chat_learning_generato
                 st.rerun()
         with actions_col3:
             if st.button(
-                "Generate Quiz",
+                "Generate Challenge Quiz",
                 use_container_width=True,
                 disabled=(not chat_messages or not chat_learning_generator),
             ):
@@ -142,7 +142,27 @@ def _render_flashcards(cards: List[Dict[str, Any]]) -> None:
     st.caption(f"{len(cards)} flashcards")
     for index, card in enumerate(cards, start=1):
         with st.expander(f"Card {index}: {card.get('front', 'Question')}"):
+            topic = card.get("topic")
+            difficulty = card.get("difficulty")
+            challenge_type = card.get("challenge_type")
+            concept = card.get("concept")
+            objective = card.get("objective")
+
+            metadata = []
+            if topic:
+                metadata.append(f"Topic: {topic}")
+            if concept:
+                metadata.append(f"Concept: {concept}")
+            if difficulty:
+                metadata.append(f"Difficulty: {difficulty}")
+            if challenge_type:
+                metadata.append(f"Type: {challenge_type}")
+            if metadata:
+                st.caption(" | ".join(metadata))
+
             st.write(card.get("back", ""))
+            if objective:
+                st.info(f"Learning objective: {objective}")
 
 
 def _render_quiz(quiz: Dict[str, Any]) -> None:
@@ -154,6 +174,19 @@ def _render_quiz(quiz: Dict[str, Any]) -> None:
     st.caption(f"{len(questions)} questions")
     for index, question in enumerate(questions, start=1):
         with st.expander(f"Q{index}: {question.get('question_text', 'Question')}"):
+            concept = question.get("concept")
+            intent_type = question.get("intent_type")
+            difficulty = question.get("difficulty")
+            metadata = []
+            if concept:
+                metadata.append(f"Concept: {concept}")
+            if intent_type:
+                metadata.append(f"Intent: {intent_type}")
+            if difficulty:
+                metadata.append(f"Difficulty: {difficulty}")
+            if metadata:
+                st.caption(" | ".join(metadata))
+
             options = question.get("options", [])
             for option in options:
                 if option == question.get("correct_answer"):
