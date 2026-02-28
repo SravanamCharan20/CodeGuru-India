@@ -32,6 +32,51 @@ def _audio_signature(audio_bytes: bytes) -> str:
     return f"{len(audio_bytes)}:{head!r}:{tail!r}"
 
 
+def _contains_non_ascii(text: str) -> bool:
+    """Return True when text contains non-ASCII characters."""
+    return any(ord(char) > 127 for char in (text or ""))
+
+
+def _normalize_intent_for_search(intent_text: str, output_language: str, rag_explainer) -> str:
+    """
+    Convert multilingual user intent into an English retrieval query.
+    Final explanation language remains unchanged.
+    """
+    cleaned_intent = (intent_text or "").strip()
+    if not cleaned_intent:
+        return cleaned_intent
+
+    if output_language == "english" and not _contains_non_ascii(cleaned_intent):
+        return cleaned_intent
+
+    orchestrator = getattr(rag_explainer, "orchestrator", None)
+    if not orchestrator or not hasattr(orchestrator, "generate_completion"):
+        return cleaned_intent
+
+    prompt = f"""Rewrite this user code question into concise English for code retrieval.
+Rules:
+- Keep framework, library, API, and file/function names unchanged.
+- Keep the meaning exactly the same.
+- Output exactly one line, no bullets or explanations.
+
+User question:
+{cleaned_intent}
+"""
+    try:
+        rewritten = orchestrator.generate_completion(
+            prompt,
+            max_tokens=120,
+            temperature=0.0,
+        )
+        rewritten = str(rewritten).strip().splitlines()[0].strip(" \"'")
+        if not rewritten or rewritten.lower().startswith("error"):
+            return cleaned_intent
+        return rewritten
+    except Exception as exc:
+        logger.warning(f"Intent normalization failed, using original query: {exc}")
+        return cleaned_intent
+
+
 def render_codebase_chat(
     session_manager,
     semantic_search,
@@ -420,8 +465,19 @@ def _process_query(
         for i, intent in enumerate(intents, 1):
             with st.spinner(f"🔍 Searching codebase for intent {i}/{len(intents)}..."):
                 # Search for relevant code
+                search_query = _normalize_intent_for_search(
+                    intent.intent_text,
+                    output_language,
+                    rag_explainer,
+                )
                 logger.info(f"Searching for: {intent.intent_text}")
-                relevant_chunks = semantic_search.search_by_intent(intent.intent_text, top_k=15)
+                logger.info(f"Search query used for retrieval: {search_query}")
+                relevant_chunks = semantic_search.search_by_intent(search_query, top_k=20)
+
+                # Fallback to original intent if rewritten query didn't find anything.
+                if not relevant_chunks and search_query != intent.intent_text:
+                    relevant_chunks = semantic_search.search_by_intent(intent.intent_text, top_k=20)
+
                 logger.info(f"Found {len(relevant_chunks)} relevant chunks")
                 
                 if not relevant_chunks:
