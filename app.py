@@ -1,5 +1,6 @@
 """Main entry point for CodeGuru India application."""
 import streamlit as st
+import inspect
 from session_manager import SessionManager
 from config import load_config
 from ai.bedrock_client import BedrockClient
@@ -118,6 +119,9 @@ def initialize_session_state():
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Home"
 
+    if "current_analysis_session_id" not in st.session_state:
+        st.session_state.current_analysis_session_id = None
+
 
 def initialize_backend_services():
     """Initialize AI and analysis services."""
@@ -161,6 +165,14 @@ def initialize_backend_services():
             from generators.learning_artifact_generator import LearningArtifactGenerator
             from learning.traceability_manager import TraceabilityManager
             from analyzers.intent_driven_orchestrator import IntentDrivenOrchestrator
+            from analyzers.unified_analyzer import UnifiedAnalyzer
+            
+            # Initialize new AI-powered components
+            from analyzers.semantic_code_search import SemanticCodeSearch
+            from analyzers.multi_intent_analyzer import MultiIntentAnalyzer
+            from analyzers.rag_explainer import RAGExplainer
+            from storage.memory_store import MemoryStore
+            from generators.chat_learning_generator import ChatLearningGenerator
             
             intent_interpreter = IntentInterpreter(orchestrator)
             file_selector = FileSelector(orchestrator)
@@ -181,6 +193,24 @@ def initialize_backend_services():
                 traceability_manager,
                 st.session_state.session_manager
             )
+            
+            # Initialize unified analyzer
+            unified_analyzer = UnifiedAnalyzer(
+                code_analyzer,
+                repository_manager,
+                intent_interpreter,
+                file_selector,
+                multi_file_analyzer,
+                learning_artifact_generator,
+                st.session_state.session_manager
+            )
+            
+            # Initialize AI-powered search and explanation
+            semantic_search = SemanticCodeSearch(orchestrator)
+            multi_intent_analyzer = MultiIntentAnalyzer(orchestrator)
+            rag_explainer = RAGExplainer(orchestrator, web_search_available=False)
+            memory_store = MemoryStore()
+            chat_learning_generator = ChatLearningGenerator(orchestrator)
             
             # Store in session state
             st.session_state.bedrock_client = bedrock_client
@@ -204,6 +234,14 @@ def initialize_backend_services():
             st.session_state.learning_artifact_generator = learning_artifact_generator
             st.session_state.traceability_manager = traceability_manager
             st.session_state.intent_driven_orchestrator = intent_driven_orchestrator
+            st.session_state.unified_analyzer = unified_analyzer
+            
+            # AI-powered search and explanation
+            st.session_state.semantic_search = semantic_search
+            st.session_state.multi_intent_analyzer = multi_intent_analyzer
+            st.session_state.rag_explainer = rag_explainer
+            st.session_state.memory_store = memory_store
+            st.session_state.chat_learning_generator = chat_learning_generator
             
             st.session_state.backend_initialized = True
             
@@ -321,14 +359,51 @@ def route_to_page(page: str):
         """, unsafe_allow_html=True)
     
     elif page == "Upload Code":
-        render_code_upload()
-    elif page == "Repository Analysis":
-        from ui.intent_driven_analysis_page import render_intent_driven_analysis_page
-        render_intent_driven_analysis_page(
-            st.session_state.intent_driven_orchestrator,
-            st.session_state.repository_manager,
-            st.session_state.intent_interpreter,
-            st.session_state.session_manager
+        # Use unified code analysis interface
+        from ui.unified_code_analysis import render_unified_code_analysis
+        unified_sig_len = len(inspect.signature(render_unified_code_analysis).parameters)
+        if unified_sig_len >= 6:
+            render_unified_code_analysis(
+                st.session_state.intent_driven_orchestrator,
+                st.session_state.repository_manager,
+                st.session_state.intent_interpreter,
+                st.session_state.session_manager,
+                st.session_state.code_analyzer,
+                st.session_state.flashcard_manager,
+            )
+        else:
+            # Backward compatibility with older function signature.
+            render_unified_code_analysis(
+                st.session_state.intent_driven_orchestrator,
+                st.session_state.repository_manager,
+                st.session_state.intent_interpreter,
+                st.session_state.session_manager,
+            )
+    elif page == "Codebase Chat":
+        from ui.codebase_chat import render_codebase_chat
+        chat_sig_len = len(inspect.signature(render_codebase_chat).parameters)
+        if chat_sig_len >= 5:
+            render_codebase_chat(
+                st.session_state.session_manager,
+                st.session_state.semantic_search,
+                st.session_state.rag_explainer,
+                st.session_state.multi_intent_analyzer,
+                st.session_state.get("memory_store"),
+            )
+        else:
+            # Backward compatibility with older function signature.
+            render_codebase_chat(
+                st.session_state.session_manager,
+                st.session_state.semantic_search,
+                st.session_state.rag_explainer,
+                st.session_state.multi_intent_analyzer,
+            )
+    elif page == "Learning Memory":
+        from ui.learning_memory import render_learning_memory
+        render_learning_memory(
+            st.session_state.session_manager,
+            st.session_state.get("memory_store"),
+            st.session_state.get("chat_learning_generator"),
         )
     elif page == "Explanations":
         render_explanation_view()

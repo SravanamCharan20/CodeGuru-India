@@ -47,7 +47,8 @@ def render_sidebar() -> str:
         pages = [
             ("Home", "🏠"),
             ("Upload Code", "📤"),
-            ("Repository Analysis", "🧠"),
+            ("Codebase Chat", "💬"),
+            ("Learning Memory", "🧠"),
             ("Explanations", "📖"),
             ("Learning Paths", "🗺️"),
             ("Quizzes", "📝"),

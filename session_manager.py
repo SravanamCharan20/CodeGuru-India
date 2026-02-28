@@ -1,6 +1,7 @@
 """Session management for CodeGuru India."""
 import streamlit as st
 import json
+import os
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -10,7 +11,44 @@ class SessionManager:
     
     def __init__(self):
         """Initialize session manager with Streamlit session state."""
+        self._reset_for_new_pytest_case()
         self._ensure_session_initialized()
+
+    def _reset_for_new_pytest_case(self):
+        """
+        Reset managed keys between pytest test cases when running in bare mode.
+
+        Streamlit session state persists process-wide during tests, which can leak
+        values across test cases. We detect per-test changes via PYTEST_CURRENT_TEST.
+        """
+        current_test = os.environ.get("PYTEST_CURRENT_TEST")
+        if not current_test:
+            return
+
+        last_test = st.session_state.get("_codeguru_last_pytest_case")
+        if last_test == current_test:
+            return
+
+        managed_keys = [
+            "user_id",
+            "language_preference",
+            "current_learning_path",
+            "uploaded_code",
+            "uploaded_filename",
+            "current_repository",
+            "current_intent",
+            "file_selection",
+            "multi_file_analysis",
+            "learning_artifacts",
+            "traceability",
+            "analysis_history",
+            "local_storage",
+        ]
+        for key in managed_keys:
+            if key in st.session_state:
+                del st.session_state[key]
+
+        st.session_state["_codeguru_last_pytest_case"] = current_test
     
     def _ensure_session_initialized(self):
         """Ensure all required session state keys exist."""

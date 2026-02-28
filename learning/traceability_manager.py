@@ -21,24 +21,30 @@ logger = logging.getLogger(__name__)
 class TraceabilityManager:
     """Maintains bidirectional mappings between learning artifacts and source code."""
     
-    def __init__(self, session_manager):
+    def __init__(self, session_manager=None):
         """
         Initialize with session manager for persistence.
         
         Args:
             session_manager: SessionManager instance for storing traceability data
         """
+        if session_manager is None:
+            from session_manager import SessionManager
+            session_manager = SessionManager()
         self.session_manager = session_manager
         self._initialize_storage()
     
     def _initialize_storage(self):
         """Initialize traceability storage in session state."""
-        if not hasattr(self.session_manager, 'traceability_data'):
-            self.session_manager.traceability_data = {
-                'artifact_to_code': {},  # artifact_id -> [CodeEvidence, ...]
-                'code_to_artifacts': {},  # "file_path:line" -> [artifact_id, ...]
-                'validation_status': {}  # artifact_id -> {is_valid, last_validated, message}
-            }
+        data = self.session_manager.traceability_data
+        if 'artifact_to_code' not in data:
+            data['artifact_to_code'] = {}  # artifact_id -> [CodeEvidence, ...]
+        if 'code_to_artifacts' not in data:
+            data['code_to_artifacts'] = {}  # "file_path:line" -> [artifact_id, ...]
+        if 'validation_status' not in data:
+            data['validation_status'] = {}  # artifact_id -> {is_valid, last_validated, message}
+        if 'artifact_types' not in data:
+            data['artifact_types'] = {}  # artifact_id -> artifact_type
     
     def register_artifact(
         self,
@@ -79,6 +85,7 @@ class TraceabilityManager:
                 }
                 for e in code_evidence
             ]
+            self.session_manager.traceability_data.setdefault('artifact_types', {})[artifact_id] = artifact_type
             
             # Store code-to-artifact mappings
             for evidence in code_evidence:
@@ -130,7 +137,7 @@ class TraceabilityManager:
                 link = TraceabilityLink(
                     link_id=f"{artifact_id}_link_{i}",
                     artifact_id=artifact_id,
-                    artifact_type="unknown",  # Type not stored in current structure
+                    artifact_type=self.session_manager.traceability_data.get('artifact_types', {}).get(artifact_id, "unknown"),
                     code_evidence=evidence,
                     created_at=datetime.now(),
                     is_valid=True
@@ -142,7 +149,7 @@ class TraceabilityManager:
             
             return ArtifactTrace(
                 artifact_id=artifact_id,
-                artifact_type="unknown",
+                artifact_type=self.session_manager.traceability_data.get('artifact_types', {}).get(artifact_id, "unknown"),
                 links=links,
                 validation_status="valid" if validation.get('is_valid', True) else "invalid",
                 last_validated=datetime.fromisoformat(validation.get('last_validated', datetime.now().isoformat()))
@@ -155,7 +162,8 @@ class TraceabilityManager:
     def get_artifacts_for_code(
         self,
         file_path: str,
-        line_number: Optional[int] = None
+        line_number: Optional[int] = None,
+        line_end: Optional[int] = None
     ) -> List[str]:
         """
         Get artifacts that reference specific code.
@@ -163,6 +171,7 @@ class TraceabilityManager:
         Args:
             file_path: Path to code file
             line_number: Optional specific line number
+            line_end: Optional line range end
             
         Returns:
             List of artifact IDs
@@ -170,12 +179,18 @@ class TraceabilityManager:
         try:
             artifacts = set()
             
-            if line_number:
-                # Get artifacts for specific line
-                key = f"{file_path}:{line_number}"
-                artifacts.update(
-                    self.session_manager.traceability_data['code_to_artifacts'].get(key, [])
-                )
+            if line_number is not None:
+                # Support exact line and line-range lookups.
+                range_end = line_end if line_end is not None else line_number
+                for key, artifact_ids in self.session_manager.traceability_data['code_to_artifacts'].items():
+                    if not key.startswith(f"{file_path}:"):
+                        continue
+                    try:
+                        evidence_line = int(key.rsplit(":", 1)[1])
+                    except (ValueError, IndexError):
+                        continue
+                    if line_number <= evidence_line <= range_end:
+                        artifacts.update(artifact_ids)
             else:
                 # Get all artifacts for file
                 for key, artifact_ids in self.session_manager.traceability_data['code_to_artifacts'].items():
@@ -298,6 +313,10 @@ class TraceabilityManager:
         try:
             # Check if file exists
             if not os.path.exists(evidence.file_path):
+                # Allow relative/non-local evidence if a snippet is already provided.
+                # This supports generated artifacts that reference repo-relative paths.
+                if evidence.code_snippet:
+                    return True
                 logger.warning(f"File does not exist: {evidence.file_path}")
                 return False
             

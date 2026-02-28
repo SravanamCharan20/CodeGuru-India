@@ -197,6 +197,16 @@ class ArtifactTrace:
     validation_status: str = "valid"  # "valid", "outdated", "invalid"
     last_validated: datetime = field(default_factory=datetime.now)
 
+    @property
+    def code_locations(self) -> List[TraceabilityLink]:
+        """
+        Backward-compatible alias used by older tests/callers.
+
+        Returns:
+            List of traceability links for this artifact.
+        """
+        return self.links
+
 
 # ============================================================================
 # Repository Management Models
@@ -210,3 +220,38 @@ class UploadResult:
     repo_analysis: Optional[Any] = None  # RepoAnalysis
     error_message: Optional[str] = None
     validation_warnings: List[str] = field(default_factory=list)
+
+    def __getitem__(self, key: str):
+        """
+        Backward-compatible dict-like access.
+        """
+        if key == "success":
+            return self.success
+        if key == "repo_path":
+            return self.repo_path
+        if key == "repo_analysis":
+            return self.repo_analysis
+        if key in {"error", "error_message"}:
+            return self.error_message
+        if key == "validation_warnings":
+            return self.validation_warnings
+        raise KeyError(key)
+
+    def get(self, key: str, default=None):
+        """
+        Backward-compatible dict-like get().
+        """
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key: str) -> bool:
+        return key in {
+            "success",
+            "repo_path",
+            "repo_analysis",
+            "error",
+            "error_message",
+            "validation_warnings",
+        }

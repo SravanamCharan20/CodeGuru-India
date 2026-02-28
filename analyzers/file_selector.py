@@ -51,14 +51,16 @@ class FileSelector:
     # Relevance score threshold - lowered to be more inclusive
     RELEVANCE_THRESHOLD = 0.15  # Was 0.3, now 0.15 to include more files
     
-    def __init__(self, langchain_orchestrator):
+    def __init__(self, langchain_orchestrator=None, code_analyzer=None, **_kwargs):
         """
         Initialize with AI orchestrator for semantic analysis.
         
         Args:
             langchain_orchestrator: LangChainOrchestrator for AI-powered analysis
         """
-        self.orchestrator = langchain_orchestrator
+        # Backward compatibility:
+        # Older call sites pass `code_analyzer=...` instead of `langchain_orchestrator`.
+        self.orchestrator = langchain_orchestrator or code_analyzer
     
     def select_files(
         self,

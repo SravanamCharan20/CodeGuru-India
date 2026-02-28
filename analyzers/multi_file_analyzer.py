@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class MultiFileAnalyzer:
     """Analyzes multiple files together to understand relationships and system behavior."""
     
-    def __init__(self, code_analyzer, langchain_orchestrator):
+    def __init__(self, code_analyzer, langchain_orchestrator=None):
         """
         Initialize with code analyzer and AI orchestrator.
         

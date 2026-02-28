@@ -149,8 +149,8 @@ class RepositoryManager:
                     error_message="Repository validation failed: " + "; ".join(warnings)
                 )
             
-            # Analyze repository
-            repo_analysis = self.repo_analyzer.analyze_repo(temp_dir)
+            # Analyze repository using local path
+            repo_analysis = self.repo_analyzer.analyze_local_repo(temp_dir)
             
             logger.info(f"Successfully uploaded from ZIP: {temp_dir}")
             
@@ -216,8 +216,8 @@ class RepositoryManager:
                     error_message="Repository validation failed: " + "; ".join(warnings)
                 )
             
-            # Analyze repository
-            repo_analysis = self.repo_analyzer.analyze_repo(folder_path)
+            # Analyze repository using local path
+            repo_analysis = self.repo_analyzer.analyze_local_repo(folder_path)
             
             logger.info(f"Successfully uploaded from folder: {folder_path}")
             

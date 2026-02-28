@@ -153,6 +153,76 @@ class RepoAnalyzer:
         except Exception as e:
             logger.error(f"Failed to analyze repository: {e}")
             return None
+    def analyze_local_repo(self, repo_path: str) -> Optional[RepoAnalysis]:
+        """
+        Analyze a local repository directory.
+
+        Args:
+            repo_path: Path to local repository directory
+
+        Returns:
+            Repository analysis result or None if failed
+        """
+        try:
+            if not os.path.exists(repo_path) or not os.path.isdir(repo_path):
+                logger.error(f"Invalid repository path: {repo_path}")
+                return None
+
+            # Get file tree
+            file_tree = self.get_file_tree(repo_path)
+
+            # Analyze files
+            all_files = []
+            for files in file_tree.values():
+                all_files.extend(files)
+
+            # Calculate statistics
+            total_files = len(all_files)
+            total_lines = sum(f.lines for f in all_files)
+            total_size_bytes = sum(f.size_bytes for f in all_files)
+
+            # Count languages
+            languages = self._count_languages(all_files)
+
+            # Identify main files
+            main_files = self._identify_main_files(all_files)
+
+            # Store file contents for main files (for later analysis)
+            import streamlit as st
+            if 'st' in dir():
+                repo_files = {}
+                for file in main_files:
+                    try:
+                        file_path = os.path.join(repo_path, file.path)
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            repo_files[file.path] = f.read()
+                    except Exception as e:
+                        logger.warning(f"Failed to read file {file.path}: {e}")
+
+                st.session_state.repo_files = repo_files
+
+            # Generate summary
+            total_size_mb = total_size_bytes / (1024 * 1024)
+            summary = self._generate_summary(
+                repo_path, total_files, total_lines,
+                total_size_mb, languages, main_files
+            )
+
+            return RepoAnalysis(
+                repo_url=repo_path,
+                total_files=total_files,
+                total_lines=total_lines,
+                total_size_bytes=total_size_bytes,
+                file_tree=file_tree,
+                languages=languages,
+                main_files=main_files,
+                summary=summary
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to analyze local repository: {e}")
+            return None
+
     
     def clone_repo(self, repo_url: str) -> Optional[str]:
         """
