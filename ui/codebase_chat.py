@@ -23,6 +23,44 @@ CHAT_TO_VOICE_LANGUAGE = {
     "hindi": "hi",
     "telugu": "te",
 }
+FEATURE_OVERVIEW_PATTERNS = (
+    "key feature",
+    "main feature",
+    "major feature",
+    "what features",
+    "overall functionality",
+    "what this app does",
+    "what this codebase does",
+    "capabilities",
+    "overview",
+)
+LOCATION_PATTERNS = (
+    "which file",
+    "where is",
+    "where are",
+    "where does",
+    "defined in",
+    "implemented in",
+    "located",
+)
+COMPARISON_PATTERNS = (
+    "compare",
+    "difference",
+    "different",
+    "vs",
+    "versus",
+    "contrast",
+)
+DEBUG_PATTERNS = (
+    "error",
+    "bug",
+    "issue",
+    "not working",
+    "failing",
+    "fix",
+    "exception",
+    "traceback",
+)
 
 
 def _audio_signature(audio_bytes: bytes) -> str:
@@ -77,6 +115,38 @@ User question:
     except Exception as exc:
         logger.warning(f"Intent normalization failed, using original query: {exc}")
         return cleaned_intent
+
+
+def _is_feature_overview_query(text: str) -> bool:
+    """Detect broad feature-overview questions."""
+    query = (text or "").lower()
+    return any(pattern in query for pattern in FEATURE_OVERVIEW_PATTERNS)
+
+
+def _classify_query_strategy(text: str) -> str:
+    """Classify query to tune retrieval breadth."""
+    query = (text or "").lower()
+    if any(pattern in query for pattern in FEATURE_OVERVIEW_PATTERNS):
+        return "overview"
+    if any(pattern in query for pattern in COMPARISON_PATTERNS):
+        return "comparison"
+    if any(pattern in query for pattern in DEBUG_PATTERNS):
+        return "debug"
+    if any(pattern in query for pattern in LOCATION_PATTERNS):
+        return "location"
+    return "specific"
+
+
+def _top_k_for_query_strategy(strategy: str) -> int:
+    """Choose retrieval depth based on query strategy."""
+    mapping = {
+        "overview": 36,
+        "comparison": 32,
+        "debug": 30,
+        "location": 20,
+        "specific": 20,
+    }
+    return mapping.get(strategy, 20)
 
 
 def render_codebase_chat(
@@ -473,13 +543,18 @@ def _process_query(
                     output_language,
                     rag_explainer,
                 )
+                strategy = _classify_query_strategy(search_query)
+                if strategy == "specific":
+                    strategy = _classify_query_strategy(intent.intent_text)
+                top_k = _top_k_for_query_strategy(strategy)
                 logger.info(f"Searching for: {intent.intent_text}")
                 logger.info(f"Search query used for retrieval: {search_query}")
-                relevant_chunks = semantic_search.search_by_intent(search_query, top_k=20)
+                logger.info(f"Query strategy: {strategy} (top_k={top_k})")
+                relevant_chunks = semantic_search.search_by_intent(search_query, top_k=top_k)
 
                 # Fallback to original intent if rewritten query didn't find anything.
                 if not relevant_chunks and search_query != intent.intent_text:
-                    relevant_chunks = semantic_search.search_by_intent(intent.intent_text, top_k=20)
+                    relevant_chunks = semantic_search.search_by_intent(intent.intent_text, top_k=top_k)
 
                 logger.info(f"Found {len(relevant_chunks)} relevant chunks")
                 
