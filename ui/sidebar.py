@@ -49,8 +49,6 @@ def render_sidebar() -> str:
             ("Upload Code", "📤"),
             ("Codebase Chat", "💬"),
             ("Learning Memory", "🧠"),
-            ("Quizzes", "📝"),
-            ("Flashcards", "🎴"),
             ("Progress", "📊")
         ]
 

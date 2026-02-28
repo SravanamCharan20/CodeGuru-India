@@ -11,6 +11,26 @@ from ui.design_system import section_header, spacing
 
 logger = logging.getLogger(__name__)
 
+CHAT_LANGUAGE_LABELS = {
+    "english": "English",
+    "hindi": "हिंदी (Hindi)",
+    "telugu": "తెలుగు (Telugu)",
+}
+CHAT_TO_VOICE_LANGUAGE = {
+    "english": "en",
+    "hindi": "hi",
+    "telugu": "te",
+}
+
+
+def _audio_signature(audio_bytes: bytes) -> str:
+    """Create a lightweight signature for detecting new recordings."""
+    if not audio_bytes:
+        return ""
+    head = audio_bytes[:24]
+    tail = audio_bytes[-24:] if len(audio_bytes) > 24 else b""
+    return f"{len(audio_bytes)}:{head!r}:{tail!r}"
+
 
 def render_codebase_chat(
     session_manager,
@@ -44,7 +64,44 @@ def render_codebase_chat(
     
     repo_analysis = repo_context.get('repo_analysis')
     repo_path = repo_context.get('repo_path')
-    output_language = st.session_state.get("selected_language", "english")
+
+    # Chat language controls
+    default_language = st.session_state.get("selected_language", "english")
+    if default_language not in CHAT_LANGUAGE_LABELS:
+        default_language = "english"
+    if "codebase_chat_language" not in st.session_state:
+        st.session_state.codebase_chat_language = default_language
+    if "codebase_chat_language_notice" not in st.session_state:
+        st.session_state.codebase_chat_language_notice = ""
+
+    st.markdown("### 🌐 Chat Language")
+    lang_col1, lang_col2 = st.columns([4, 1])
+    with lang_col1:
+        current_chat_language = st.session_state.get("codebase_chat_language", default_language)
+        lang_options = list(CHAT_LANGUAGE_LABELS.keys())
+        selected_chat_language = st.selectbox(
+            "Choose chat language",
+            options=lang_options,
+            index=lang_options.index(current_chat_language) if current_chat_language in lang_options else 0,
+            format_func=lambda key: CHAT_LANGUAGE_LABELS[key],
+            key="codebase_chat_language_selector",
+            label_visibility="collapsed",
+        )
+    with lang_col2:
+        spacing("sm")
+        if st.button("Apply", use_container_width=True, key="apply_codebase_chat_language"):
+            st.session_state.codebase_chat_language = selected_chat_language
+            st.session_state.codebase_chat_language_notice = (
+                f"Language applied: {CHAT_LANGUAGE_LABELS[selected_chat_language]}. "
+                "Voice and chat responses will use this language."
+            )
+            st.rerun()
+
+    if st.session_state.codebase_chat_language_notice:
+        st.success(st.session_state.codebase_chat_language_notice)
+        st.session_state.codebase_chat_language_notice = ""
+
+    output_language = st.session_state.get("codebase_chat_language", default_language)
 
     analysis_session_id = _ensure_analysis_session(
         memory_store,
@@ -81,6 +138,93 @@ def render_codebase_chat(
         st.caption(f"**Indexed**: {len(semantic_search.code_chunks)} code chunks")
     
     spacing("md")
+
+    # Voice prompt controls (native language input)
+    voice_processor = st.session_state.get("voice_processor")
+    with st.expander("🎤 Voice Prompt (Ask in Native Language)", expanded=False):
+        if not voice_processor:
+            st.warning("Voice processor not initialized.")
+        else:
+            if "codebase_voice_audio" not in st.session_state:
+                st.session_state.codebase_voice_audio = b""
+            if "codebase_voice_signature" not in st.session_state:
+                st.session_state.codebase_voice_signature = ""
+            if "codebase_voice_transcript" not in st.session_state:
+                st.session_state.codebase_voice_transcript = ""
+
+            active_voice_lang = CHAT_TO_VOICE_LANGUAGE.get(output_language, "en")
+            st.caption(
+                f"Voice language: {CHAT_LANGUAGE_LABELS.get(output_language, 'English')}. "
+                "Recorded voice will be transcribed and inserted into chat input."
+            )
+            st.markdown(
+                "1. Click the mic button to start recording.\n"
+                "2. Click again after speaking to stop.\n"
+                "3. Click `Translate` to insert the transcript into the prompt box."
+            )
+
+            try:
+                from audio_recorder_streamlit import audio_recorder
+
+                audio_bytes = audio_recorder(
+                    text="🎙️ Start/Stop Recording",
+                    recording_color="#0066CC",
+                    neutral_color="#E5E5E5",
+                    icon_size="2x",
+                )
+                if audio_bytes:
+                    current_signature = _audio_signature(audio_bytes)
+                    if current_signature != st.session_state.codebase_voice_signature:
+                        st.session_state.codebase_voice_audio = audio_bytes
+                        st.session_state.codebase_voice_signature = current_signature
+                        st.session_state.codebase_voice_transcript = ""
+                        st.success("Recording completed successfully.")
+
+                if st.session_state.codebase_voice_audio:
+                    col_translate, col_clear = st.columns(2)
+                    with col_translate:
+                        translate_clicked = st.button("Translate", key="translate_voice_prompt", type="primary")
+                    with col_clear:
+                        clear_clicked = st.button("Clear Voice", key="clear_voice_prompt", use_container_width=True)
+
+                    if clear_clicked:
+                        st.session_state.codebase_voice_audio = b""
+                        st.session_state.codebase_voice_signature = ""
+                        st.session_state.codebase_voice_transcript = ""
+                        st.session_state["chat_input"] = ""
+                        st.success("Voice recording and transcript cleared.")
+                        st.rerun()
+
+                    if translate_clicked:
+                        with st.spinner("Translating your voice prompt..."):
+                            result = voice_processor.process_audio(
+                                st.session_state.codebase_voice_audio,
+                                active_voice_lang,
+                            )
+                            if result and result.transcript:
+                                transcript = result.transcript.strip()
+                                st.session_state.codebase_voice_transcript = transcript
+                                # Update prompt input before chat_input widget is created.
+                                st.session_state["chat_input"] = transcript
+                                st.success("Translated text inserted into prompt box.")
+                            else:
+                                st.error("Translation failed. Please record and try again.")
+
+                if st.session_state.codebase_voice_transcript:
+                    st.markdown("**Translated text:**")
+                    st.text_area(
+                        "Voice transcript",
+                        value=st.session_state.codebase_voice_transcript,
+                        height=90,
+                        disabled=True,
+                        key="voice_transcript_preview",
+                        label_visibility="collapsed",
+                    )
+            except ImportError:
+                st.warning(
+                    "Voice recorder package not installed. Install with: "
+                    "`pip install streamlit-audio-recorder`"
+                )
     
     # Initialize chat history
     if (

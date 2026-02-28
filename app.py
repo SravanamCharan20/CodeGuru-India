@@ -231,8 +231,6 @@ def route_to_page(page: str):
     """Route to the selected page component."""
     from ui.explanation_view import render_explanation_view
     from ui.learning_path import render_learning_path
-    from ui.quiz_view import render_quiz_view
-    from ui.flashcard_view import render_flashcard_view
     from ui.progress_dashboard import render_progress_dashboard
     
     if page == "Home":
@@ -365,12 +363,11 @@ def route_to_page(page: str):
         render_explanation_view()
     elif page == "Learning Paths":
         render_learning_path()
-    elif page == "Quizzes":
-        render_quiz_view()
-    elif page == "Flashcards":
-        render_flashcard_view()
     elif page == "Progress":
         render_progress_dashboard()
+    else:
+        st.session_state.current_page = "Home"
+        st.rerun()
 
 
 if __name__ == "__main__":
