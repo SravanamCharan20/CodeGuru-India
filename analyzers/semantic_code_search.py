@@ -40,6 +40,11 @@ class SemanticCodeSearch:
         self.orchestrator = langchain_orchestrator
         self.code_chunks = []
         self.file_summaries = {}
+
+    def clear_index(self) -> None:
+        """Clear indexed chunks and summaries."""
+        self.code_chunks = []
+        self.file_summaries = {}
     
     def index_repository(self, repo_path: str, repo_analysis) -> None:
         """

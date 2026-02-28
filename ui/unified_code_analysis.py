@@ -6,12 +6,22 @@ Consolidates single file upload and repository analysis into one streamlined wor
 
 import streamlit as st
 import logging
+import os
+import shutil
+import tempfile
 from dataclasses import asdict, is_dataclass
 from typing import Optional
 from ui.design_system import section_header, spacing, info_box
 from ui.learning_artifacts_dashboard import render_learning_artifacts_dashboard
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_REPO_LEARNING_GOAL = (
+    "Give me a practical onboarding to this repository: explain what it does, "
+    "its architecture, key execution/data flows, and the most important files "
+    "to read first."
+)
 
 
 def _to_serializable(value):
@@ -55,6 +65,254 @@ def _ensure_memory_session(source_type: str, title: str, source_ref: str, summar
     )
     st.session_state.current_analysis_session_id = session_id
     return session_id
+
+
+def _cleanup_single_file_temp_dir() -> None:
+    """Delete previously created temporary directory for single-file chat context."""
+    temp_dir = st.session_state.get("single_file_temp_dir")
+    if temp_dir and os.path.isdir(temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    st.session_state.single_file_temp_dir = None
+
+
+def _reset_chat_state_for_new_source() -> None:
+    """Reset chat/search state so stale source data is never reused."""
+    semantic_search = st.session_state.get("semantic_search")
+    if semantic_search:
+        if hasattr(semantic_search, "clear_index"):
+            semantic_search.clear_index()
+        else:
+            semantic_search.code_chunks = []
+            semantic_search.file_summaries = {}
+
+    st.session_state.pop("chat_history", None)
+    st.session_state.loaded_chat_session_id = None
+    st.session_state.current_analysis_session_id = None
+
+
+def _clear_single_file_state(session_manager) -> None:
+    """Clear single-file upload state when switching to repository mode."""
+    session_manager.set_uploaded_code(None, None)
+    st.session_state.uploaded_filename = None
+    st.session_state.single_file_context_signature = ""
+    st.session_state.single_file_uploader_version = st.session_state.get("single_file_uploader_version", 0) + 1
+    _cleanup_single_file_temp_dir()
+
+
+def _prepare_single_file_chat_context(session_manager, filename: str, file_content: str) -> None:
+    """
+    Build a temporary one-file repository context so Codebase Chat works for local file uploads.
+    """
+    from analyzers.repo_analyzer import FileInfo, RepoAnalysis
+
+    _cleanup_single_file_temp_dir()
+
+    temp_dir = tempfile.mkdtemp(prefix="codeguru_single_")
+    target_path = os.path.join(temp_dir, filename)
+    target_folder = os.path.dirname(target_path)
+    if target_folder:
+        os.makedirs(target_folder, exist_ok=True)
+    with open(target_path, "w", encoding="utf-8", errors="ignore") as handle:
+        handle.write(file_content)
+
+    file_extension = os.path.splitext(filename)[1].lower()
+    total_lines = max(len(file_content.splitlines()), 1)
+    total_size_bytes = len(file_content.encode("utf-8", errors="ignore"))
+
+    file_info = FileInfo(
+        path=filename,
+        name=os.path.basename(filename),
+        extension=file_extension,
+        size_bytes=total_size_bytes,
+        lines=total_lines,
+    )
+    language = file_extension.lstrip(".") or "code"
+    repo_analysis = RepoAnalysis(
+        repo_url=filename,
+        total_files=1,
+        total_lines=total_lines,
+        total_size_bytes=total_size_bytes,
+        file_tree={"root": [file_info]},
+        languages={language.upper(): total_lines},
+        main_files=[file_info],
+        summary=f"Single-file context created for {filename}.",
+    )
+
+    session_manager.set_current_repository(temp_dir, repo_analysis)
+    st.session_state.single_file_temp_dir = temp_dir
+
+
+def _build_default_learning_goal(repo_analysis) -> str:
+    """Build a useful default learning goal for repository deep analysis."""
+    repo_name = "repository"
+    language_hint = ""
+
+    if repo_analysis:
+        repo_ref = getattr(repo_analysis, "repo_url", "") or "repository"
+        repo_name = repo_ref.rstrip("/").split("/")[-1] or "repository"
+        languages = list(getattr(repo_analysis, "languages", {}).keys())
+        if languages:
+            language_hint = f" Focus on the {', '.join(languages[:2])} parts first."
+
+    return (
+        f"For '{repo_name}', {DEFAULT_REPO_LEARNING_GOAL}"
+        f"{language_hint} Keep it beginner-friendly but technically precise."
+    )
+
+
+def _prepare_auto_repo_learning_goal(repo_analysis) -> None:
+    """Set auto-learning-goal session state for deep repository analysis."""
+    st.session_state.pending_learning_goal = _build_default_learning_goal(repo_analysis)
+    st.session_state.learning_goal_source = "auto"
+    st.session_state.current_intent = None
+
+
+def _get_analysis_learning_goal(session_manager, repo_analysis) -> str:
+    """Resolve learning goal from explicit intent or auto fallback."""
+    pending_goal = st.session_state.get("pending_learning_goal", "").strip()
+    if pending_goal:
+        return pending_goal
+
+    intent_data = session_manager.get_current_intent()
+    if intent_data and intent_data.get("intent"):
+        intent = intent_data["intent"]
+        original_input = getattr(intent, "original_input", "")
+        if original_input:
+            return original_input
+        primary_intent = getattr(intent, "primary_intent", "")
+        if primary_intent:
+            return primary_intent.replace("_", " ")
+
+    return _build_default_learning_goal(repo_analysis)
+
+
+def _extract_repo_starter_files(selection_result, limit: int = 6):
+    """Pick top files that are useful for first-pass repository onboarding."""
+    if not selection_result or not getattr(selection_result, "selected_files", None):
+        return []
+
+    starter_files = []
+    for item in selection_result.selected_files[:limit]:
+        file_info = getattr(item, "file_info", None)
+        file_path = getattr(file_info, "path", "")
+        role = getattr(item, "file_role", "core_logic").replace("_", " ")
+        reason = (getattr(item, "selection_reason", "") or "").split(";")[0].strip()
+
+        if not file_path:
+            continue
+        if not reason:
+            reason = "Important for understanding core behavior."
+
+        starter_files.append({
+            "path": file_path,
+            "role": role,
+            "reason": reason,
+        })
+
+    return starter_files
+
+
+def _build_chat_starter_prompts(starter_files):
+    """Generate practical prompts the user can ask in Codebase Chat."""
+    if starter_files:
+        first_file = starter_files[0]["path"]
+        return [
+            f"Explain the end-to-end flow starting from `{first_file}`.",
+            f"What are the top 3 important modules around `{first_file}` and why?",
+            "If I have only 30 minutes, what should I read first in this repo?",
+        ]
+
+    return [
+        "Explain the main architecture and runtime flow of this repository.",
+        "What files should I read first as a beginner, and in what order?",
+        "Create a learning plan for this repo in simple terms.",
+    ]
+
+
+def _render_repo_starter_guide(result, session_manager):
+    """Render practical first-use guidance before detailed artifacts."""
+    st.markdown("### 🚀 Starter Guide")
+
+    learning_goal = st.session_state.get("last_learning_goal") or st.session_state.get("pending_learning_goal", "")
+    if learning_goal:
+        st.caption(f"Learning goal used: {learning_goal}")
+
+    repo_context = session_manager.get_current_repository() or {}
+    repo_analysis = repo_context.get("repo_analysis")
+    if repo_analysis:
+        repo_summary = getattr(repo_analysis, "summary", "") or ""
+        if repo_summary:
+            with st.expander("What this repository contains", expanded=True):
+                st.text(repo_summary)
+
+    selection_result = result.get("selection_result")
+    starter_files = _extract_repo_starter_files(selection_result)
+
+    if starter_files:
+        st.markdown("#### Start with These Files")
+        for index, item in enumerate(starter_files, start=1):
+            st.markdown(f"{index}. `{item['path']}` ({item['role']}) - {item['reason']}")
+
+    st.markdown("#### Ask These in Codebase Chat")
+    for prompt in _build_chat_starter_prompts(starter_files):
+        st.code(prompt, language="text")
+
+    if st.button("💬 Open Codebase Chat", use_container_width=True):
+        st.session_state.current_page = "Codebase Chat"
+        st.rerun()
+
+
+def _complexity_label(score: int) -> str:
+    """Convert numeric complexity score into human-friendly level."""
+    if score <= 20:
+        return "Low"
+    if score <= 50:
+        return "Medium"
+    if score <= 80:
+        return "High"
+    return "Very High"
+
+
+def _extract_code_reading_order(structure: dict, limit: int = 6):
+    """Build an ordered list of classes/functions to read first."""
+    if not isinstance(structure, dict):
+        return []
+
+    items = []
+    for cls in structure.get("classes", []) or []:
+        items.append({
+            "kind": "Class",
+            "name": cls.get("name", "UnknownClass"),
+            "line": int(cls.get("line_number") or 0),
+        })
+
+    for func in structure.get("functions", []) or []:
+        items.append({
+            "kind": "Function",
+            "name": func.get("name", "unknown_function"),
+            "line": int(func.get("line_number") or 0),
+        })
+
+    items = [item for item in items if item["line"] > 0]
+    items.sort(key=lambda item: item["line"])
+    return items[:limit]
+
+
+def _build_single_file_prompts(filename: str, reading_order):
+    """Generate practical follow-up prompts for continued learning."""
+    if reading_order:
+        anchor = reading_order[0]["name"]
+        return [
+            f"Explain `{anchor}` step-by-step with input/output examples.",
+            f"What edge cases can break `{anchor}` in `{filename}`?",
+            f"If this file grows, how should we refactor `{filename}` safely?",
+        ]
+
+    return [
+        f"Explain the end-to-end flow of `{filename}` in simple terms.",
+        f"What are likely bugs or edge cases in `{filename}`?",
+        f"How can `{filename}` be made easier to maintain?",
+    ]
 
 
 def render_unified_code_analysis(
@@ -155,37 +413,40 @@ def _render_single_file_upload(session_manager, code_analyzer):
     """Render single file upload interface."""
     st.markdown("### Quick Analysis")
     st.caption("Upload a single code file for fast analysis")
+
+    if "single_file_uploader_version" not in st.session_state:
+        st.session_state.single_file_uploader_version = 0
     
     uploaded_file = st.file_uploader(
         "Choose a code file",
         type=['py', 'js', 'jsx', 'ts', 'tsx', 'java', 'cpp', 'c', 'go', 'rb'],
-        help="Supported: Python, JavaScript, TypeScript, Java, C++, C, Go, Ruby"
+        help="Supported: Python, JavaScript, TypeScript, Java, C++, C, Go, Ruby",
+        key=f"single_file_uploader_{st.session_state.single_file_uploader_version}",
     )
     
     if uploaded_file:
-        # Store file in session using existing method
-        file_content = uploaded_file.read().decode('utf-8')
-        session_manager.set_uploaded_code(file_content, uploaded_file.name)
+        file_signature = f"{uploaded_file.name}:{uploaded_file.size}"
+        previous_signature = st.session_state.get("single_file_context_signature")
+
+        if previous_signature != file_signature:
+            # Store uploaded file and create chat-compatible context for this exact file.
+            file_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
+            session_manager.set_uploaded_code(file_content, uploaded_file.name)
+            _reset_chat_state_for_new_source()
+            _prepare_single_file_chat_context(session_manager, uploaded_file.name, file_content)
+            st.session_state.single_file_context_signature = file_signature
         
         st.success(f"✅ Uploaded: {uploaded_file.name}")
-        
-        # Analysis mode selection
-        st.markdown("### Analysis Mode")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("⚡ Quick Analysis", use_container_width=True, type="primary"):
-                st.session_state.analysis_mode = 'quick'
-                st.session_state.workflow_step = 'analyze'
-                st.rerun()
-        
-        with col2:
-            if st.button("🧠 Deep Analysis", use_container_width=True):
-                st.session_state.analysis_mode = 'deep'
-                st.session_state.workflow_step = 'intent'
-                st.rerun()
-        
-        st.caption("Quick: Fast code explanation | Deep: Intent-driven with learning artifacts")
+
+        if st.button("⚡ Analyze File Now", use_container_width=True, type="primary"):
+            st.session_state.analysis_mode = 'quick'
+            st.session_state.workflow_step = 'analyze'
+            st.rerun()
+
+        st.info(
+            "Need deep architecture learning with chat across multiple files? "
+            "Use GitHub URL or ZIP/Folder upload above."
+        )
 
 
 def _render_github_upload(repository_manager, session_manager):
@@ -207,7 +468,10 @@ def _render_github_upload(repository_manager, session_manager):
                 result = repository_manager.upload_from_github(github_url)
                 
                 if result.success:
+                    _clear_single_file_state(session_manager)
+                    _reset_chat_state_for_new_source()
                     session_manager.set_current_repository(result.repo_path, result.repo_analysis)
+                    _prepare_auto_repo_learning_goal(result.repo_analysis)
                     _ensure_memory_session(
                         source_type="repository",
                         title=(result.repo_analysis.repo_url.rstrip("/").split("/")[-1]
@@ -218,7 +482,7 @@ def _render_github_upload(repository_manager, session_manager):
                     )
                     st.success(f"✅ Repository uploaded successfully!")
                     st.session_state.analysis_mode = 'deep'
-                    st.session_state.workflow_step = 'intent'
+                    st.session_state.workflow_step = 'analyze'
                     st.rerun()
                 else:
                     st.error(f"❌ Upload failed: {result.error_message}")
@@ -243,7 +507,10 @@ def _render_zip_folder_upload(repository_manager, session_manager):
                 result = repository_manager.upload_from_zip(zip_file)
                 
                 if result.success:
+                    _clear_single_file_state(session_manager)
+                    _reset_chat_state_for_new_source()
                     session_manager.set_current_repository(result.repo_path, result.repo_analysis)
+                    _prepare_auto_repo_learning_goal(result.repo_analysis)
                     _ensure_memory_session(
                         source_type="repository",
                         title=(result.repo_analysis.repo_url.rstrip("/").split("/")[-1]
@@ -254,7 +521,7 @@ def _render_zip_folder_upload(repository_manager, session_manager):
                     )
                     st.success("✅ ZIP file processed successfully!")
                     st.session_state.analysis_mode = 'deep'
-                    st.session_state.workflow_step = 'intent'
+                    st.session_state.workflow_step = 'analyze'
                     st.rerun()
                 else:
                     st.error(f"❌ Processing failed: {result.error_message}")
@@ -274,7 +541,10 @@ def _render_zip_folder_upload(repository_manager, session_manager):
             result = repository_manager.upload_from_folder(folder_path)
             
             if result.success:
+                _clear_single_file_state(session_manager)
+                _reset_chat_state_for_new_source()
                 session_manager.set_current_repository(result.repo_path, result.repo_analysis)
+                _prepare_auto_repo_learning_goal(result.repo_analysis)
                 _ensure_memory_session(
                     source_type="repository",
                     title=(result.repo_analysis.repo_url.rstrip("/").split("/")[-1]
@@ -285,7 +555,7 @@ def _render_zip_folder_upload(repository_manager, session_manager):
                 )
                 st.success("✅ Folder analyzed successfully!")
                 st.session_state.analysis_mode = 'deep'
-                st.session_state.workflow_step = 'intent'
+                st.session_state.workflow_step = 'analyze'
                 st.rerun()
             else:
                 st.error(f"❌ Analysis failed: {result.error_message}")
@@ -374,11 +644,16 @@ def _render_voice_query(session_manager):
     if voice_query:
         st.session_state.voice_query = voice_query
     
+    repo_context = session_manager.get_current_repository()
+
     # Process voice query button
     if st.session_state.voice_query:
-        if st.button("🚀 Process Query", type="primary", use_container_width=True):
-            st.info("Voice query processing will be integrated with code analysis in the next update")
-            st.caption("For now, please use the file upload tabs to analyze code")
+        if st.button("🚀 Ask in Codebase Chat", type="primary", use_container_width=True):
+            if repo_context:
+                st.session_state.chat_input = st.session_state.voice_query
+                st.session_state.current_page = "Codebase Chat"
+                st.rerun()
+            st.error("Upload a repository first, then ask voice/text questions in Codebase Chat.")
 
 
 def _show_upload_summary(session_manager):
@@ -418,8 +693,8 @@ def _show_upload_summary(session_manager):
 
 def _render_intent_step(intent_interpreter, session_manager):
     """Render intent input step."""
-    st.markdown("## 🎯 Define Your Learning Goal")
-    st.caption("Tell us what you want to learn from this code")
+    st.markdown("## 🎯 Optional: Define Your Learning Goal")
+    st.caption("Skip this if you prefer auto-analysis and continue directly.")
     
     # Back button
     if st.button("← Back to Upload"):
@@ -428,13 +703,24 @@ def _render_intent_step(intent_interpreter, session_manager):
     
     spacing("md")
     
+    repo_context = session_manager.get_current_repository()
+    repo_analysis = repo_context.get("repo_analysis") if repo_context else None
+    suggested_goal = _build_default_learning_goal(repo_analysis)
+    template_prefill = st.session_state.pop("learning_goal_template_prefill", "")
+    if template_prefill:
+        st.session_state.manual_learning_goal = template_prefill
+    current_goal_text = st.session_state.get("manual_learning_goal", suggested_goal)
+
     # Intent input
     user_input = st.text_area(
         "What do you want to learn?",
+        value=current_goal_text,
+        key="manual_learning_goal_input",
         placeholder="Examples:\n- Understand the authentication flow\n- Learn how the payment system works\n- Prepare for interview questions about this codebase\n- Focus on the backend API architecture",
         height=150,
         help="Describe your learning goal in natural language"
     )
+    st.session_state.manual_learning_goal = user_input
     
     # Quick intent templates
     st.markdown("#### Quick Templates")
@@ -442,40 +728,45 @@ def _render_intent_step(intent_interpreter, session_manager):
     
     with col1:
         if st.button("🔐 Authentication Flow", use_container_width=True):
-            user_input = "Understand the authentication and authorization flow"
+            st.session_state.learning_goal_template_prefill = "Understand the authentication and authorization flow"
+            st.rerun()
     
     with col2:
         if st.button("🏗️ Architecture", use_container_width=True):
-            user_input = "Learn the overall system architecture and design patterns"
+            st.session_state.learning_goal_template_prefill = "Learn the overall system architecture and design patterns"
+            st.rerun()
     
     with col3:
         if st.button("💼 Interview Prep", use_container_width=True):
-            user_input = "Prepare for technical interview questions about this codebase"
+            st.session_state.learning_goal_template_prefill = "Prepare for technical interview questions about this codebase"
+            st.rerun()
     
     spacing("md")
-    
-    # Continue button
-    if st.button("Continue to Analysis →", type="primary", disabled=not user_input):
-        if user_input:
-            # Interpret intent
-            with st.spinner("Interpreting your learning goal..."):
-                repo_context = session_manager.get_current_repository()
-                if repo_context:
-                    repo_analysis = repo_context.get('repo_analysis')
-                    intent = intent_interpreter.interpret_intent(user_input, repo_analysis)
-                    session_manager.set_current_intent(intent)
-                    
-                    # Check if clarification needed
-                    if hasattr(intent, 'needs_clarification') and intent.needs_clarification:
-                        st.warning("Your goal needs clarification")
-                        if hasattr(intent, 'clarification_questions'):
-                            for question in intent.clarification_questions:
-                                st.write(f"- {question}")
-                    else:
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Continue to Analysis →", type="primary"):
+            if user_input:
+                with st.spinner("Interpreting your learning goal..."):
+                    if repo_context:
+                        intent = intent_interpreter.interpret_intent(user_input, repo_analysis)
+                        session_manager.set_current_intent(intent)
+                        st.session_state.pending_learning_goal = user_input
+                        st.session_state.learning_goal_source = "manual"
                         st.session_state.workflow_step = 'analyze'
                         st.rerun()
-                else:
-                    st.error("No repository found. Please upload code first.")
+                    else:
+                        st.error("No repository found. Please upload code first.")
+            else:
+                st.error("Please provide a goal or use Skip.")
+    with col2:
+        if st.button("Skip and Auto-Analyze", use_container_width=True):
+            if repo_context:
+                _prepare_auto_repo_learning_goal(repo_analysis)
+                st.session_state.workflow_step = "analyze"
+                st.rerun()
+            else:
+                st.error("No repository found. Please upload code first.")
 
 
 def _render_analysis_step(orchestrator, session_manager, code_analyzer, flashcard_manager):
@@ -487,6 +778,10 @@ def _render_analysis_step(orchestrator, session_manager, code_analyzer, flashcar
     if analysis_mode == 'quick':
         _run_quick_analysis(session_manager, code_analyzer, flashcard_manager)
     elif analysis_mode == 'deep':
+        active_goal = st.session_state.get("pending_learning_goal")
+        if active_goal:
+            st.caption("Using this learning goal for deep analysis:")
+            st.info(active_goal)
         _run_deep_analysis(orchestrator, session_manager)
     else:
         st.error("Invalid analysis mode")
@@ -562,18 +857,16 @@ def _run_quick_analysis(session_manager, code_analyzer, flashcard_manager):
 def _run_deep_analysis(orchestrator, session_manager):
     """Run deep intent-driven analysis."""
     repo_context = session_manager.get_current_repository()
-    intent_data = session_manager.get_current_intent()
-    
-    if not repo_context or not intent_data:
-        st.error("Missing repository or intent. Please start over.")
+
+    if not repo_context:
+        st.error("Missing repository. Please upload repository and try again.")
         return
     
     with st.spinner("Running deep analysis..."):
         try:
             repo_path = repo_context.get('repo_path')
             repo_analysis = repo_context.get('repo_analysis')
-            intent = intent_data.get('intent')
-            user_input = intent.original_input if hasattr(intent, 'original_input') else "Analyze this repository"
+            user_input = _get_analysis_learning_goal(session_manager, repo_analysis)
             analysis_session_id = _ensure_memory_session(
                 source_type="repository",
                 title=(getattr(repo_analysis, "repo_url", repo_path).rstrip("/").split("/")[-1]
@@ -603,6 +896,7 @@ def _run_deep_analysis(orchestrator, session_manager):
                     'mode': 'deep',
                     'result': result
                 }
+                st.session_state.last_learning_goal = user_input
 
                 memory_store = st.session_state.get("memory_store")
                 if memory_store and analysis_session_id and result.get("status") == "success":
@@ -617,6 +911,7 @@ def _run_deep_analysis(orchestrator, session_manager):
                         replace=True,
                     )
                 
+                st.session_state.pending_learning_goal = ""
                 st.success("✅ Deep analysis complete!")
                 st.session_state.workflow_step = 'results'
                 st.rerun()
@@ -642,11 +937,15 @@ def _render_results_step(session_manager):
         st.markdown("## 📊 Analysis Results")
     with col2:
         if st.button("🔄 New Analysis", use_container_width=True):
+            session_manager.clear_current_analysis()
+            _clear_single_file_state(session_manager)
+            _reset_chat_state_for_new_source()
             st.session_state.workflow_step = 'upload'
             st.session_state.analysis_mode = None
             st.session_state.current_analysis = None
-            st.session_state.current_analysis_session_id = None
-            st.session_state.loaded_chat_session_id = None
+            st.session_state.pending_learning_goal = ""
+            st.session_state.last_learning_goal = ""
+            st.session_state.learning_goal_source = ""
             st.rerun()
     
     spacing("md")
@@ -666,61 +965,57 @@ def _render_quick_results(analysis):
     filename = analysis.get('filename', 'code file')
     
     # Tabs for different views
-    tab1, tab2 = st.tabs(["📝 Explanation", "🎴 Flashcards"])
+    tab1, tab2 = st.tabs(["🚀 Starter Guide", "🎴 Flashcards"])
     
     with tab1:
-        st.markdown(f"### Code Explanation: {filename}")
-        
-        if 'explanation' in analysis_data:
-            st.markdown(analysis_data['explanation'])
-        elif 'summary' in analysis_data:
-            st.markdown(analysis_data['summary'])
+        st.markdown(f"### {filename} - Practical Walkthrough")
+
+        summary_text = analysis_data.get("summary") or analysis_data.get("explanation")
+        if summary_text:
+            st.markdown("#### What This File Does")
+            st.markdown(summary_text)
         else:
-            st.info("No explanation available")
-        
-        spacing("md")
-        
-        if 'structure' in analysis_data:
-            with st.expander("📊 Code Structure"):
-                structure = analysis_data['structure']
-                
-                if isinstance(structure, dict):
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        classes = structure.get('classes', [])
-                        st.metric("Classes", len(classes))
-                        if classes:
-                            st.write("**Classes:**")
-                            for cls in classes[:5]:
-                                st.write(f"- {cls}")
-                    
-                    with col2:
-                        functions = structure.get('functions', [])
-                        st.metric("Functions", len(functions))
-                        if functions:
-                            st.write("**Functions:**")
-                            for func in functions[:5]:
-                                st.write(f"- {func}")
-                    
-                    with col3:
-                        imports = structure.get('imports', [])
-                        st.metric("Imports", len(imports))
-                        if imports:
-                            st.write("**Imports:**")
-                            for imp in imports[:5]:
-                                st.write(f"- {imp}")
-                else:
-                    st.json(structure)
-        
-        if 'concepts' in analysis_data:
-            with st.expander("💡 Key Concepts"):
-                concepts = analysis_data['concepts']
-                if isinstance(concepts, list):
-                    for concept in concepts:
-                        st.write(f"- {concept}")
-                else:
-                    st.write(concepts)
+            st.info("Summary is not available for this file.")
+
+        complexity = int(analysis_data.get("complexity_score") or 0)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Complexity Score", complexity)
+        with col2:
+            st.metric("Complexity Level", _complexity_label(complexity))
+
+        structure = analysis_data.get("structure", {})
+        reading_order = _extract_code_reading_order(structure)
+        if reading_order:
+            st.markdown("#### Read in This Order")
+            for index, item in enumerate(reading_order, start=1):
+                st.markdown(
+                    f"{index}. {item['kind']} `{item['name']}` (line {item['line']})"
+                )
+
+        patterns = analysis_data.get("patterns", []) or []
+        if patterns:
+            st.markdown("#### Key Patterns in This File")
+            for pattern in patterns[:4]:
+                name = pattern.get("name", "Pattern")
+                desc = pattern.get("description", "")
+                st.markdown(f"- **{name}**: {desc}")
+
+        issues = analysis_data.get("issues", []) or []
+        if issues:
+            st.markdown("#### Review These Potential Issues")
+            for issue in issues[:5]:
+                severity = (issue.get("severity", "warning") or "warning").upper()
+                line_num = issue.get("line_number", "?")
+                description = issue.get("description", "Potential issue detected.")
+                suggestion = issue.get("suggestion", "Review this section.")
+                st.markdown(
+                    f"- `{severity}` line {line_num}: {description} | Fix: {suggestion}"
+                )
+
+        st.markdown("#### Ask Next")
+        for prompt in _build_single_file_prompts(filename, reading_order):
+            st.code(prompt, language="text")
     
     with tab2:
         st.markdown("### Flashcards")
@@ -737,7 +1032,7 @@ def _render_quick_results(analysis):
                         st.code(card['code_evidence'], language='python')
         else:
             st.info("No flashcards generated. Flashcards are created for more complex code.")
-            st.caption("Try uploading a larger file or use Deep Analysis mode for comprehensive learning materials.")
+            st.caption("Try a larger file for stronger practice material.")
 
 
 def _render_deep_results(analysis, session_manager):
@@ -752,11 +1047,16 @@ def _render_deep_results(analysis, session_manager):
         return
     
     elif status == 'clarification_needed':
-        st.warning("Your learning goal needs clarification")
+        st.warning("The learning goal needs clarification.")
         questions = result.get('questions', [])
         for question in questions:
             st.write(f"- {question}")
-        st.info("Please go back and refine your learning goal")
+        if st.button("Use Smart Default Goal Instead", type="primary"):
+            repo_context = session_manager.get_current_repository() or {}
+            repo_analysis = repo_context.get("repo_analysis")
+            _prepare_auto_repo_learning_goal(repo_analysis)
+            st.session_state.workflow_step = "analyze"
+            st.rerun()
         return
     
     elif status == 'no_files_found':
@@ -788,9 +1088,12 @@ def _render_deep_results(analysis, session_manager):
                 st.metric("Quiz Questions", len(questions))
             
             spacing("md")
-        
-        # Use existing dashboard to display artifacts
-        render_learning_artifacts_dashboard(session_manager)
+
+        tab1, tab2 = st.tabs(["🚀 Starter Guide", "📚 Learning Materials"])
+        with tab1:
+            _render_repo_starter_guide(result, session_manager)
+        with tab2:
+            render_learning_artifacts_dashboard(session_manager)
     
     else:
         st.error(f"Unknown analysis status: {status}")

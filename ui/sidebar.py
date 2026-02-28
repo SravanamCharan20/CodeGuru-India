@@ -43,18 +43,21 @@ def render_sidebar() -> str:
         
         current_page = st.session_state.current_page
         
-        # Navigation buttons
+        # Navigation buttons (demo-focused)
         pages = [
             ("Home", "🏠"),
             ("Upload Code", "📤"),
             ("Codebase Chat", "💬"),
             ("Learning Memory", "🧠"),
-            ("Explanations", "📖"),
-            ("Learning Paths", "🗺️"),
             ("Quizzes", "📝"),
             ("Flashcards", "🎴"),
             ("Progress", "📊")
         ]
+
+        valid_pages = {name for name, _ in pages}
+        if current_page not in valid_pages:
+            current_page = "Home"
+            st.session_state.current_page = "Home"
         
         for page_name, icon in pages:
             # Determine button type based on current page
@@ -90,10 +93,10 @@ def render_sidebar() -> str:
         with st.expander("ℹ️ Help"):
             st.markdown("""
             **How to use:**
-            1. Upload your code
-            2. Get AI explanations
-            3. Take quizzes
-            4. Track progress
+            1. Upload repository or file
+            2. Review Starter Guide
+            3. Ask doubts in Codebase Chat
+            4. Practice in Flashcards/Quizzes
             
             **Tip:** Use the sidebar to close/open it
             """)
