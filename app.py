@@ -1,6 +1,5 @@
 """Main entry point for CodeGuru India application."""
 import streamlit as st
-import inspect
 from session_manager import SessionManager
 from config import load_config
 from ai.bedrock_client import BedrockClient
@@ -15,19 +14,10 @@ def main():
     initialize_session_state()
     initialize_backend_services()
     
-    # Import UI components
+    # Import sidebar and route to selected page.
     from ui.sidebar import render_sidebar
-    from ui.code_upload import render_code_upload
-    from ui.explanation_view import render_explanation_view
-    from ui.learning_path import render_learning_path
-    from ui.quiz_view import render_quiz_view
-    from ui.flashcard_view import render_flashcard_view
-    from ui.progress_dashboard import render_progress_dashboard
     
-    # Render sidebar and get selected page
     selected_page = render_sidebar()
-    
-    # Route to selected page
     route_to_page(selected_page)
 
 
@@ -165,7 +155,6 @@ def initialize_backend_services():
             from generators.learning_artifact_generator import LearningArtifactGenerator
             from learning.traceability_manager import TraceabilityManager
             from analyzers.intent_driven_orchestrator import IntentDrivenOrchestrator
-            from analyzers.unified_analyzer import UnifiedAnalyzer
             
             # Initialize new AI-powered components
             from analyzers.semantic_code_search import SemanticCodeSearch
@@ -191,17 +180,6 @@ def initialize_backend_services():
                 multi_file_analyzer,
                 learning_artifact_generator,
                 traceability_manager,
-                st.session_state.session_manager
-            )
-            
-            # Initialize unified analyzer
-            unified_analyzer = UnifiedAnalyzer(
-                code_analyzer,
-                repository_manager,
-                intent_interpreter,
-                file_selector,
-                multi_file_analyzer,
-                learning_artifact_generator,
                 st.session_state.session_manager
             )
             
@@ -234,7 +212,6 @@ def initialize_backend_services():
             st.session_state.learning_artifact_generator = learning_artifact_generator
             st.session_state.traceability_manager = traceability_manager
             st.session_state.intent_driven_orchestrator = intent_driven_orchestrator
-            st.session_state.unified_analyzer = unified_analyzer
             
             # AI-powered search and explanation
             st.session_state.semantic_search = semantic_search
@@ -252,7 +229,6 @@ def initialize_backend_services():
 
 def route_to_page(page: str):
     """Route to the selected page component."""
-    from ui.code_upload import render_code_upload
     from ui.explanation_view import render_explanation_view
     from ui.learning_path import render_learning_path
     from ui.quiz_view import render_quiz_view
@@ -361,43 +337,23 @@ def route_to_page(page: str):
     elif page == "Upload Code":
         # Use unified code analysis interface
         from ui.unified_code_analysis import render_unified_code_analysis
-        unified_sig_len = len(inspect.signature(render_unified_code_analysis).parameters)
-        if unified_sig_len >= 6:
-            render_unified_code_analysis(
-                st.session_state.intent_driven_orchestrator,
-                st.session_state.repository_manager,
-                st.session_state.intent_interpreter,
-                st.session_state.session_manager,
-                st.session_state.code_analyzer,
-                st.session_state.flashcard_manager,
-            )
-        else:
-            # Backward compatibility with older function signature.
-            render_unified_code_analysis(
-                st.session_state.intent_driven_orchestrator,
-                st.session_state.repository_manager,
-                st.session_state.intent_interpreter,
-                st.session_state.session_manager,
-            )
+        render_unified_code_analysis(
+            st.session_state.intent_driven_orchestrator,
+            st.session_state.repository_manager,
+            st.session_state.intent_interpreter,
+            st.session_state.session_manager,
+            st.session_state.code_analyzer,
+            st.session_state.flashcard_manager,
+        )
     elif page == "Codebase Chat":
         from ui.codebase_chat import render_codebase_chat
-        chat_sig_len = len(inspect.signature(render_codebase_chat).parameters)
-        if chat_sig_len >= 5:
-            render_codebase_chat(
-                st.session_state.session_manager,
-                st.session_state.semantic_search,
-                st.session_state.rag_explainer,
-                st.session_state.multi_intent_analyzer,
-                st.session_state.get("memory_store"),
-            )
-        else:
-            # Backward compatibility with older function signature.
-            render_codebase_chat(
-                st.session_state.session_manager,
-                st.session_state.semantic_search,
-                st.session_state.rag_explainer,
-                st.session_state.multi_intent_analyzer,
-            )
+        render_codebase_chat(
+            st.session_state.session_manager,
+            st.session_state.semantic_search,
+            st.session_state.rag_explainer,
+            st.session_state.multi_intent_analyzer,
+            st.session_state.get("memory_store"),
+        )
     elif page == "Learning Memory":
         from ui.learning_memory import render_learning_memory
         render_learning_memory(

@@ -1,2 +1,9 @@
 .env.example
 .env*
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
