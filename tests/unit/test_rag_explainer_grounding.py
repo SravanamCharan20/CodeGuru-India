@@ -178,3 +178,49 @@ def test_generic_unsupported_code_entities_are_filtered_from_answer():
     assert "frontend/src/router.js" in text
     assert "MagicRouterEngine" not in text
     assert "src/magic_router.ts" not in text
+
+
+def test_location_file_query_without_match_returns_clear_not_found():
+    class _HallucinatingOrchestrator:
+        def generate_completion(self, prompt, max_tokens=300):
+            return "The backend entry file is `backend/index.js`."
+
+    explainer = RAGExplainer(_HallucinatingOrchestrator(), web_search_available=False)
+    repo_context = SimpleNamespace(
+        repo_url="local-repo",
+        languages={"javascript": 10},
+    )
+    chunks = [
+        CodeChunk(
+            file_path="frontend/src/Components/Shimmer.jsx",
+            start_line=1,
+            end_line=20,
+            language="javascript",
+            chunk_type="block",
+            name="shimmer",
+            content="export default function Shimmer() { return <div>Loading</div>; }",
+        ),
+        CodeChunk(
+            file_path="frontend/src/main.jsx",
+            start_line=1,
+            end_line=15,
+            language="javascript",
+            chunk_type="block",
+            name="main",
+            content="import router from './router.jsx';",
+        ),
+    ]
+
+    result = explainer.generate_detailed_explanation(
+        intent="where is backend index.js file",
+        relevant_chunks=chunks,
+        repo_context=repo_context,
+        use_web_search=False,
+        output_language="english",
+    )
+
+    text = result["explanation"].lower()
+    assert "index.js" in text
+    assert "could not find" in text
+    assert result["code_references"] == []
+    assert "shimmer" not in text

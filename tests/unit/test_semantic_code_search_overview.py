@@ -8,6 +8,17 @@ class _DummyOrchestrator:
         return ""
 
 
+class _RerankOrchestrator:
+    def generate_completion(self, prompt, max_tokens=320, temperature=0.0):
+        if "User question" not in prompt:
+            return ""
+        # Prefer candidate 2 over candidate 1.
+        return "\n".join([
+            "2|95|Direct checkout implementation details",
+            "1|25|Only UI wrapper text",
+        ])
+
+
 def _chunk(file_path: str, content: str) -> CodeChunk:
     return CodeChunk(
         file_path=file_path,
@@ -104,3 +115,65 @@ def test_debug_query_prefers_error_handling_chunks():
     results = engine.search_by_intent("app is not working, debug this exception and bug", top_k=1)
     assert results
     assert results[0].file_path.lower() == "src/utils/errorhandler.js"
+
+
+def test_specific_query_requires_anchor_match_and_avoids_noise_fallback():
+    engine = SemanticCodeSearch(_DummyOrchestrator())
+    engine.code_chunks = [
+        _chunk(
+            "src/router.jsx",
+            "import { createBrowserRouter } from 'react-router-dom'; const router = createBrowserRouter([{ path: '/' }]);",
+        ),
+        _chunk(
+            "src/components/Header.jsx",
+            "export default function Header() { return <header>Hi</header>; }",
+        ),
+    ]
+
+    results = engine.search_by_intent("where is payment gateway implemented?", top_k=3)
+    assert results == []
+
+
+def test_specific_entity_query_prioritizes_entity_matching_chunks():
+    engine = SemanticCodeSearch(_DummyOrchestrator())
+    engine.code_chunks = [
+        _chunk(
+            "src/components/Shimmer.jsx",
+            "export default function Shimmer() { return <div className='shimmer'>Loading</div>; }",
+        ),
+        _chunk(
+            "src/router.jsx",
+            "import { createBrowserRouter } from 'react-router-dom'; const router = createBrowserRouter([{ path: '/' }]);",
+        ),
+        _chunk(
+            "src/pages/Home.jsx",
+            "export default function Home() { return <main>Home</main>; }",
+        ),
+    ]
+
+    results = engine.search_by_intent("what is shimmer in this repo and why we use that", top_k=2)
+    files = [item.file_path.lower() for item in results]
+
+    assert files
+    assert files[0] == "src/components/shimmer.jsx"
+    assert "src/router.jsx" not in files
+
+
+def test_llm_reranker_can_reorder_close_candidates_for_direct_answer():
+    engine = SemanticCodeSearch(_RerankOrchestrator())
+    engine.code_chunks = [
+        _chunk(
+            "src/components/CheckoutBanner.jsx",
+            "export default function CheckoutBanner() { return <div>Checkout now</div>; }",
+        ),
+        _chunk(
+            "src/pages/Checkout.jsx",
+            "export default function Checkout() { const checkout = true; return <main>Checkout flow</main>; }",
+        ),
+    ]
+
+    results = engine.search_by_intent("where is checkout implemented?", top_k=2)
+    files = [item.file_path.lower() for item in results]
+
+    assert files
+    assert files[0] == "src/pages/checkout.jsx"

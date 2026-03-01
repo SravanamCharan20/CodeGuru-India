@@ -117,6 +117,37 @@ class SemanticCodeSearch:
         "state",
         "hook",
     )
+    LOW_SIGNAL_KEYWORDS = {
+        "system",
+        "implementation",
+        "implement",
+        "implemented",
+        "use",
+        "used",
+        "using",
+        "explain",
+        "about",
+        "overview",
+        "details",
+        "detail",
+        "code",
+        "codebase",
+        "repo",
+        "repository",
+        "project",
+        "application",
+        "app",
+        "feature",
+        "features",
+        "file",
+        "files",
+        "module",
+        "modules",
+        "functionality",
+        "purpose",
+        "works",
+        "working",
+    }
     
     def __init__(self, langchain_orchestrator):
         """
@@ -128,11 +159,13 @@ class SemanticCodeSearch:
         self.orchestrator = langchain_orchestrator
         self.code_chunks = []
         self.file_summaries = {}
+        self.rerank_cache: Dict[Tuple[str, Tuple[str, ...]], Dict[int, int]] = {}
 
     def clear_index(self) -> None:
         """Clear indexed chunks and summaries."""
         self.code_chunks = []
         self.file_summaries = {}
+        self.rerank_cache = {}
     
     def index_repository(self, repo_path: str, repo_analysis) -> None:
         """
@@ -204,14 +237,20 @@ class SemanticCodeSearch:
             if not self.code_chunks:
                 logger.warning("No code chunks indexed")
                 return []
+
+            query_mode = self._classify_query_mode(user_intent)
+            strict_mode = self._is_strict_mode(query_mode)
             
             # Use AI to score relevance
             relevant_chunks = self._score_chunks_with_ai(user_intent, self.code_chunks, top_k)
             
             logger.info(f"Found {len(relevant_chunks)} relevant chunks")
             
-            # If no chunks found, return top chunks anyway
+            # If no chunks found, return top chunks only for non-strict broad modes.
             if not relevant_chunks and self.code_chunks:
+                if strict_mode:
+                    logger.warning("No grounded chunks found for strict query mode")
+                    return []
                 logger.warning("No relevant chunks found, returning top chunks")
                 relevant_chunks = self.code_chunks[:min(top_k, len(self.code_chunks))]
                 for chunk in relevant_chunks:
@@ -222,6 +261,61 @@ class SemanticCodeSearch:
         except Exception as e:
             logger.error(f"Semantic search failed: {e}", exc_info=True)
             return []
+
+    def assess_grounding(self, user_intent: str, chunks: List[CodeChunk]) -> Dict[str, Any]:
+        """
+        Assess whether retrieved chunks are strongly grounded for the query.
+
+        Returns:
+            Dict with grounding flags and diagnostics.
+        """
+        query_mode = self._classify_query_mode(user_intent)
+        strict_mode = self._is_strict_mode(query_mode)
+        keywords = self._extract_keywords(user_intent)
+        anchor_terms = self._extract_anchor_terms(keywords, user_intent)
+
+        if not chunks:
+            return {
+                "is_grounded": False,
+                "query_mode": query_mode,
+                "top_score": 0.0,
+                "anchor_terms": anchor_terms,
+                "anchor_coverage": 0,
+                "reason": "no_chunks",
+            }
+
+        top_score = max(float(chunk.relevance_score or 0.0) for chunk in chunks)
+        anchor_coverage = 0
+        if anchor_terms:
+            expanded = self._expand_query_keywords(anchor_terms)
+            coverage = set()
+            for chunk in chunks:
+                content_lower = chunk.content.lower()
+                path_lower = chunk.file_path.lower()
+                for term in expanded:
+                    if term and (term in content_lower or term in path_lower):
+                        coverage.add(term)
+            anchor_coverage = len(coverage)
+
+        min_score = 1.2 if strict_mode else 0.6
+        has_min_score = top_score >= min_score
+        has_anchor = (anchor_coverage >= 1) if (strict_mode and anchor_terms) else True
+        is_grounded = bool(has_min_score and has_anchor)
+
+        reason = "ok"
+        if not has_min_score:
+            reason = "low_score"
+        elif not has_anchor:
+            reason = "missing_anchor"
+
+        return {
+            "is_grounded": is_grounded,
+            "query_mode": query_mode,
+            "top_score": top_score,
+            "anchor_terms": anchor_terms,
+            "anchor_coverage": anchor_coverage,
+            "reason": reason,
+        }
     
     def get_relevant_files(
         self,
@@ -358,13 +452,18 @@ Summary:"""
             logger.info(f"Detected query mode: {query_mode}")
 
             keywords = self._extract_keywords(intent)
+            anchor_terms = self._extract_anchor_terms(keywords, intent)
             logger.info(f"Extracted keywords: {keywords}")
+            logger.info(f"Anchor terms: {anchor_terms}")
+            strict_mode = self._is_strict_mode(query_mode)
 
             scored_chunks = []
             for chunk in chunks:
                 score = self._compute_chunk_score(
                     chunk=chunk,
                     keywords=keywords,
+                    anchor_terms=anchor_terms,
+                    strict_mode=strict_mode,
                     query_is_config=query_is_config,
                     query_is_overview=query_is_overview,
                     query_is_location=query_is_location,
@@ -376,22 +475,50 @@ Summary:"""
                 chunk.relevance_score = score
                 scored_chunks.append(chunk)
 
+            if strict_mode and anchor_terms:
+                scored_chunks = [
+                    chunk for chunk in scored_chunks
+                    if self._anchor_hits_for_chunk(chunk, anchor_terms) > 0
+                ]
+
             if not scored_chunks:
-                logger.warning("No high-confidence matches found, using heuristic fallback")
-                fallback = self._fallback_chunks(
-                    chunks=chunks,
-                    top_k=top_k,
-                    query_is_config=query_is_config,
-                    query_is_overview=query_is_overview,
-                    query_is_location=query_is_location,
-                    query_is_comparison=query_is_comparison,
-                    query_is_debug=query_is_debug,
-                )
-                for rank, chunk in enumerate(fallback, start=1):
-                    chunk.relevance_score = max(0.1, 1.0 - rank * 0.01)
-                return fallback
+                if query_is_overview or query_is_comparison or query_is_config:
+                    logger.warning("No high-confidence matches found, using heuristic fallback")
+                    fallback = self._fallback_chunks(
+                        chunks=chunks,
+                        top_k=top_k,
+                        query_is_config=query_is_config,
+                        query_is_overview=query_is_overview,
+                        query_is_location=query_is_location,
+                        query_is_comparison=query_is_comparison,
+                        query_is_debug=query_is_debug,
+                    )
+                    for rank, chunk in enumerate(fallback, start=1):
+                        chunk.relevance_score = max(0.1, 1.0 - rank * 0.01)
+                    return fallback
+
+                logger.warning("No grounded matches for strict query mode")
+                return []
 
             scored_chunks.sort(key=lambda x: x.relevance_score, reverse=True)
+            if self._should_use_llm_rerank(query_mode, len(scored_chunks)):
+                scored_chunks = self._apply_llm_rerank(
+                    intent=intent,
+                    scored_chunks=scored_chunks,
+                    top_k=top_k,
+                )
+
+            if strict_mode and scored_chunks[0].relevance_score < 1.2:
+                logger.warning(
+                    "Top relevance score %.2f is below strict threshold; returning no match",
+                    scored_chunks[0].relevance_score,
+                )
+                return []
+
+            top_score = scored_chunks[0].relevance_score
+            min_kept_score = max(0.9 if strict_mode else 0.35, top_score * (0.32 if strict_mode else 0.22))
+            scored_chunks = [chunk for chunk in scored_chunks if chunk.relevance_score >= min_kept_score]
+
             per_file_limit = 1 if (query_is_overview or query_is_comparison) else 2
             candidates = self._select_diverse_chunks(scored_chunks, top_k=top_k, per_file_limit=per_file_limit)
             logger.info(f"Returning {len(candidates)} candidates")
@@ -407,6 +534,8 @@ Summary:"""
         self,
         chunk: CodeChunk,
         keywords: List[str],
+        anchor_terms: List[str],
+        strict_mode: bool,
         query_is_config: bool,
         query_is_overview: bool,
         query_is_location: bool,
@@ -426,6 +555,16 @@ Summary:"""
                 score += 0.8
 
         score += keyword_hits * 1.6
+
+        anchor_hits_path, anchor_hits_content = self._anchor_hit_counts(
+            path_lower=path_lower,
+            content_lower=content_lower,
+            anchor_terms=anchor_terms,
+        )
+        score += anchor_hits_content * 2.0
+        score += anchor_hits_path * 1.3
+        if strict_mode and anchor_terms and (anchor_hits_path + anchor_hits_content == 0):
+            score -= 1.8
 
         # Prefer central app files when query is broad/overview.
         feature_signal = self._feature_signal_score(content_lower, path_lower)
@@ -464,6 +603,200 @@ Summary:"""
             score += 0.5
 
         return max(0.0, score)
+
+    def _is_strict_mode(self, query_mode: str) -> bool:
+        """Modes where precision is preferred over broad fallback."""
+        return query_mode in {"specific", "location"}
+
+    def _extract_anchor_terms(self, keywords: List[str], intent: str) -> List[str]:
+        """Extract high-signal anchor terms from query keywords and explicit entities."""
+        anchors: List[str] = []
+        seen = set()
+
+        def add_term(term: str) -> None:
+            normalized = term.strip().lower().strip("`'\".,:;()[]{}")
+            if not normalized or len(normalized) <= 2:
+                return
+            if normalized in self.LOW_SIGNAL_KEYWORDS:
+                return
+            if normalized in seen:
+                return
+            seen.add(normalized)
+            anchors.append(normalized)
+
+        for keyword in keywords:
+            add_term(keyword)
+
+        for token in re.findall(r"`([^`]+)`", intent or ""):
+            add_term(token)
+
+        for token in re.findall(r'"([^"]+)"|\'([^\']+)\'', intent or ""):
+            for candidate in token:
+                if candidate:
+                    add_term(candidate)
+
+        for route in re.findall(r"/[A-Za-z0-9_:/-]+", intent or ""):
+            add_term(route)
+            for part in re.split(r"[/:-]", route):
+                add_term(part)
+
+        for token in re.findall(r"[A-Za-z_][A-Za-z0-9_./:-]{2,}", intent or ""):
+            lowered = token.lower()
+            is_code_like = (
+                "/" in token
+                or "." in token
+                or "_" in token
+                or ":" in token
+                or any(char.isupper() for char in token[1:])
+            )
+            if is_code_like and lowered not in self.LOW_SIGNAL_KEYWORDS:
+                add_term(lowered)
+
+        return anchors[:10]
+
+    def _anchor_hit_counts(
+        self,
+        path_lower: str,
+        content_lower: str,
+        anchor_terms: List[str],
+    ) -> Tuple[int, int]:
+        """Count anchor matches in path/content for scoring."""
+        if not anchor_terms:
+            return (0, 0)
+
+        expanded = self._expand_query_keywords(anchor_terms)
+        path_hits = 0
+        content_hits = 0
+
+        for term in expanded:
+            if not term:
+                continue
+            if term in path_lower:
+                path_hits += 1
+            if term in content_lower:
+                content_hits += 1
+
+        return (path_hits, content_hits)
+
+    def _anchor_hits_for_chunk(self, chunk: CodeChunk, anchor_terms: List[str]) -> int:
+        """Return total anchor hits for a chunk."""
+        path_hits, content_hits = self._anchor_hit_counts(
+            path_lower=chunk.file_path.lower(),
+            content_lower=chunk.content.lower(),
+            anchor_terms=anchor_terms,
+        )
+        return path_hits + content_hits
+
+    def _should_use_llm_rerank(self, query_mode: str, candidate_count: int) -> bool:
+        """Decide whether to run lightweight LLM reranking."""
+        if candidate_count < 2:
+            return False
+        if not self.orchestrator or not hasattr(self.orchestrator, "generate_completion"):
+            return False
+        return query_mode in {"specific", "location", "debug", "comparison"}
+
+    def _apply_llm_rerank(
+        self,
+        intent: str,
+        scored_chunks: List[CodeChunk],
+        top_k: int,
+    ) -> List[CodeChunk]:
+        """Apply LLM-based direct-answer reranking on top candidates."""
+        if not scored_chunks:
+            return scored_chunks
+
+        candidate_limit = min(len(scored_chunks), max(6, top_k * 2))
+        candidates = scored_chunks[:candidate_limit]
+        candidate_signature = tuple(
+            f"{chunk.file_path}:{chunk.start_line}:{chunk.end_line}"
+            for chunk in candidates
+        )
+        cache_key = (intent.strip().lower(), candidate_signature)
+        ranking = self.rerank_cache.get(cache_key)
+
+        if ranking is None:
+            prompt = self._build_rerank_prompt(intent, candidates)
+            try:
+                try:
+                    response = self.orchestrator.generate_completion(
+                        prompt,
+                        max_tokens=320,
+                        temperature=0.0,
+                    )
+                except TypeError:
+                    response = self.orchestrator.generate_completion(
+                        prompt,
+                        max_tokens=320,
+                    )
+                ranking = self._parse_rerank_response(str(response or ""), len(candidates))
+            except Exception as exc:
+                logger.warning(f"LLM reranking failed, using deterministic ranking: {exc}")
+                ranking = {}
+            self.rerank_cache[cache_key] = ranking
+
+        if not ranking:
+            return scored_chunks
+
+        for index, chunk in enumerate(candidates, start=1):
+            llm_score = ranking.get(index)
+            if llm_score is None:
+                continue
+            llm_norm = max(0.0, min(1.0, llm_score / 100.0))
+            # Keep deterministic relevance as primary signal; use reranker as adjustment.
+            chunk.relevance_score = max(
+                0.0,
+                float(chunk.relevance_score) + ((llm_norm - 0.5) * 1.6),
+            )
+
+        scored_chunks.sort(key=lambda item: item.relevance_score, reverse=True)
+        return scored_chunks
+
+    def _build_rerank_prompt(self, intent: str, candidates: List[CodeChunk]) -> str:
+        """Build compact prompt for direct-answer snippet reranking."""
+        lines = [
+            "Rank repository snippets for direct answer relevance.",
+            f'User question: "{intent}"',
+            "",
+            "Rules:",
+            "- Higher score if snippet directly answers the question.",
+            "- Prefer explicit entity/route/function matches.",
+            "- Penalize generic setup/config snippets.",
+            "- Do not infer beyond snippet text.",
+            "- Output ONLY lines in format: ID|SCORE|REASON",
+            "- SCORE must be an integer between 0 and 100.",
+            "",
+            "Candidates:",
+        ]
+
+        for idx, chunk in enumerate(candidates, start=1):
+            excerpt = re.sub(r"\s+", " ", chunk.content or "").strip()[:220]
+            lines.append(
+                f"{idx}|{chunk.file_path}:{chunk.start_line}-{chunk.end_line}|{excerpt}"
+            )
+
+        return "\n".join(lines)
+
+    def _parse_rerank_response(self, response: str, max_id: int) -> Dict[int, int]:
+        """Parse reranker output lines into {candidate_id: score}."""
+        if not response:
+            return {}
+        if response.lower().startswith("error generating response"):
+            return {}
+
+        ranking: Dict[int, int] = {}
+        line_pattern = re.compile(r"^\s*(\d+)\s*\|\s*(-?\d{1,3})\b")
+
+        for line in response.splitlines():
+            match = line_pattern.match(line.strip())
+            if not match:
+                continue
+            candidate_id = int(match.group(1))
+            if candidate_id < 1 or candidate_id > max_id:
+                continue
+            score = int(match.group(2))
+            ranking[candidate_id] = max(0, min(100, score))
+
+        return ranking
 
     def _classify_query_mode(self, intent: str) -> str:
         """Classify query into retrieval mode."""

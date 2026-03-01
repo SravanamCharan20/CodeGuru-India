@@ -51,3 +51,16 @@ def test_tell_me_prefix_does_not_create_fake_subject():
     assert "tell" not in text
     assert "shimmer" in text
     assert "why should we have to use shimmer" in text
+
+
+def test_followup_explain_clause_merges_with_primary_subject():
+    analyzer = MultiIntentAnalyzer(_DummyOrchestrator())
+
+    intents = analyzer.analyze_query(
+        "which routing system used for the routing in this codebase and explain about that"
+    )
+
+    assert len(intents) == 1
+    text = intents[0].intent_text.lower()
+    assert "routing system" in text
+    assert "explain" in text

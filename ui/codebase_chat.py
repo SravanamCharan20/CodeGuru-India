@@ -78,6 +78,48 @@ def _contains_non_ascii(text: str) -> bool:
     return any(ord(char) > 127 for char in (text or ""))
 
 
+def _grounding_failure_message(output_language: str, grounding: Dict[str, Any]) -> str:
+    """Localized message when retrieval evidence is insufficient."""
+    reason = grounding.get("reason", "low_score")
+    anchors = grounding.get("anchor_terms", []) or []
+    anchor_note = ", ".join(f"`{term}`" for term in anchors[:4]) if anchors else ""
+
+    if output_language == "hindi":
+        if reason == "missing_anchor" and anchor_note:
+            return (
+                "मुझे इस प्रश्न के लिए रिपॉजिटरी से पर्याप्त सटीक प्रमाण नहीं मिला।\n\n"
+                f"इन anchors का स्पष्ट match नहीं मिला: {anchor_note}\n"
+                "कृपया exact file/function/feature नाम के साथ फिर पूछें।"
+            )
+        return (
+            "मुझे इस प्रश्न के लिए रिपॉजिटरी के रिट्रीव्ड snippets में पर्याप्त प्रमाण नहीं मिला।\n\n"
+            "कृपया प्रश्न को थोड़ा specific करें (feature, file, function, route का नाम दें)।"
+        )
+
+    if output_language == "telugu":
+        if reason == "missing_anchor" and anchor_note:
+            return (
+                "ఈ ప్రశ్నకు రిపోజిటరీలో తగిన స్పష్టమైన ఆధారాలు కనిపించలేదు.\n\n"
+                f"ఈ anchors కు match కాలేదు: {anchor_note}\n"
+                "దయచేసి exact file/function/feature పేరుతో మళ్లీ అడగండి."
+            )
+        return (
+            "ఈ ప్రశ్నకు రిట్రీవ్ చేసిన repository snippets‌లో సరిపడే ఆధారాలు లభించలేదు.\n\n"
+            "దయచేసి ప్రశ్నను మరింత specific గా అడగండి (feature/file/function/route పేరుతో)."
+        )
+
+    if reason == "missing_anchor" and anchor_note:
+        return (
+            "I could not find strong repository evidence for this question.\n\n"
+            f"I could not match these query anchors: {anchor_note}\n"
+            "Please ask with exact file/function/feature names."
+        )
+    return (
+        "I could not find strong repository evidence for this question in retrieved snippets.\n\n"
+        "Please rephrase with a specific feature, file, function, or route name."
+    )
+
+
 def _normalize_intent_for_search(intent_text: str, output_language: str, rag_explainer) -> str:
     """
     Convert multilingual user intent into an English retrieval query.
@@ -558,12 +600,21 @@ def _process_query(
                     relevant_chunks = semantic_search.search_by_intent(intent.intent_text, top_k=top_k)
 
                 logger.info(f"Found {len(relevant_chunks)} relevant chunks")
-                
-                if not relevant_chunks:
+
+                grounding = {
+                    "is_grounded": bool(relevant_chunks),
+                    "reason": "no_chunks" if not relevant_chunks else "ok",
+                    "anchor_terms": [],
+                }
+                if hasattr(semantic_search, "assess_grounding"):
+                    grounding = semantic_search.assess_grounding(intent.intent_text, relevant_chunks)
+                    logger.info(f"Grounding assessment: {grounding}")
+
+                if not relevant_chunks or not grounding.get("is_grounded", False):
                     logger.warning(f"No relevant code found for: {intent.intent_text}")
                     responses.append({
                         'intent': intent.intent_text,
-                        'explanation': "I couldn't find relevant code for this question. The codebase might not contain this functionality, or try rephrasing your question.",
+                        'explanation': _grounding_failure_message(output_language, grounding),
                         'code_references': []
                     })
                     continue

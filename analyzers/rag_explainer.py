@@ -29,6 +29,15 @@ class RAGExplainer:
         "capabilities",
         "high level overview",
     )
+    LOCATION_PATTERNS = (
+        "which file",
+        "where is",
+        "where are",
+        "where does",
+        "defined in",
+        "implemented in",
+        "located",
+    )
     NOISE_FILE_HINTS = (
         ".env",
         "config",
@@ -229,11 +238,28 @@ class RAGExplainer:
             logger.info(f"Generating detailed explanation for: {intent}")
 
             is_feature_overview = self._is_feature_overview_intent(intent)
+            is_location_query = self._is_location_intent(intent)
             scoped_chunks = relevant_chunks
             if is_feature_overview:
                 scoped_chunks = self._filter_overview_chunks(relevant_chunks)
                 if not scoped_chunks:
                     scoped_chunks = relevant_chunks
+
+            requested_file_targets = self._extract_requested_file_targets(intent)
+            if is_location_query and requested_file_targets:
+                matched_chunks = self._filter_chunks_by_requested_targets(scoped_chunks, requested_file_targets)
+                if not matched_chunks:
+                    return {
+                        'intent': intent,
+                        'explanation': self._location_target_not_found_message(
+                            output_language,
+                            requested_file_targets,
+                        ),
+                        'code_references': [],
+                        'external_sources': False,
+                        'confidence': 'medium',
+                    }
+                scoped_chunks = matched_chunks
 
             # Step 1: Analyze code chunks
             grounded_snippets = self._build_grounded_snippets(scoped_chunks)
@@ -326,6 +352,73 @@ class RAGExplainer:
                 'external_sources': False,
                 'confidence': 'low'
             }
+
+    def _is_location_intent(self, intent: str) -> bool:
+        """Detect location/file-oriented questions."""
+        query = (intent or "").strip().lower()
+        if not query:
+            return False
+        return any(pattern in query for pattern in self.LOCATION_PATTERNS)
+
+    def _extract_requested_file_targets(self, intent: str) -> List[str]:
+        """Extract explicit file names/paths mentioned in question."""
+        if not intent:
+            return []
+
+        pattern = re.compile(
+            r"[A-Za-z0-9_./-]+\.(?:py|js|jsx|ts|tsx|java|go|rb|php|cs|json|yaml|yml|toml)",
+            flags=re.IGNORECASE,
+        )
+        targets: List[str] = []
+        seen = set()
+        for match in pattern.findall(intent):
+            normalized = match.strip("`'\".,:;()[]{}").lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            targets.append(normalized)
+        return targets
+
+    def _filter_chunks_by_requested_targets(
+        self,
+        chunks: List[CodeChunk],
+        targets: List[str],
+    ) -> List[CodeChunk]:
+        """Keep only chunks whose file path matches requested file targets."""
+        if not chunks or not targets:
+            return chunks
+
+        matched: List[CodeChunk] = []
+        for chunk in chunks:
+            file_path = (chunk.file_path or "").lower()
+            basename = file_path.split("/")[-1] if file_path else ""
+            if any(
+                target == file_path
+                or target == basename
+                or target in file_path
+                for target in targets
+            ):
+                matched.append(chunk)
+        return matched
+
+    def _location_target_not_found_message(self, output_language: str, targets: List[str]) -> str:
+        """Localized response when asked file target does not exist in evidence."""
+        target_text = ", ".join(f"`{item}`" for item in targets[:4])
+
+        if output_language == "hindi":
+            return (
+                f"मुझे रिपॉजिटरी के रिट्रीव्ड snippets में {target_text} नहीं मिला।\n\n"
+                "संभव है यह फाइल मौजूद न हो या नाम अलग हो। कृपया exact path या संबंधित feature/module नाम से पूछें।"
+            )
+        if output_language == "telugu":
+            return (
+                f"రిట్రీవ్ చేసిన repository snippets‌లో {target_text} కనపడలేదు.\n\n"
+                "ఈ ఫైల్ లేకపోవచ్చు లేదా పేరు వేరుగా ఉండొచ్చు. దయచేసి exact path లేదా సంబంధిత feature/module పేరుతో అడగండి."
+            )
+        return (
+            f"I could not find {target_text} in the retrieved repository snippets.\n\n"
+            "The file may not exist or may use a different name/path. Try with the exact path or related feature/module name."
+        )
     
     def _analyze_code_chunks(self, chunks: List[CodeChunk]) -> Dict[str, Any]:
         """

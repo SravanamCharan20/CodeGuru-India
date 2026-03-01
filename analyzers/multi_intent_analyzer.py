@@ -283,7 +283,7 @@ Extract all intents:"""
 
             if subject and subject in seg_lower:
                 # Follow-up reasoning/usage questions should stay with primary concept.
-                if re.match(r"^(why|how)\b", seg_lower):
+                if re.match(r"^(why|how|explain|describe|show|where)\b", seg_lower):
                     should_merge = True
 
             if should_merge:
