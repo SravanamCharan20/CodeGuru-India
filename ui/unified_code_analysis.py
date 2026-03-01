@@ -12,7 +12,7 @@ import tempfile
 import time
 from dataclasses import asdict, is_dataclass
 from typing import Optional
-from ui.design_system import section_header, spacing, info_box
+from ui.design_system import section_header, spacing, info_box, render_hero, render_soft_panel
 from ui.learning_artifacts_dashboard import render_learning_artifacts_dashboard
 from utils.performance_metrics import record_metric
 
@@ -346,10 +346,16 @@ def render_unified_code_analysis(
         code_analyzer: CodeAnalyzer instance
         flashcard_manager: FlashcardManager instance
     """
-    section_header(
-        "Code Analysis",
-        "Upload code and analyze with AI-powered insights"
+    render_hero(
+        "Analyze Code, Learn Faster",
+        "Upload a local file or full repository. Get grounded explanations, ask follow-up questions, and generate learning artifacts from your real codebase.",
+        pills=[
+            "Single File + Repository",
+            "Voice + Native Language",
+            "Chat + Quiz + Flashcards",
+        ],
     )
+    section_header("Analysis Workspace", "Choose an input source and start your guided learning flow")
     
     # Initialize workflow state
     if 'analysis_mode' not in st.session_state:
@@ -388,6 +394,10 @@ def render_unified_code_analysis(
 
 def _render_upload_step(repository_manager, session_manager, code_analyzer):
     """Render unified upload interface."""
+    render_soft_panel(
+        "Recommended Demo Flow",
+        "Use repository upload for full architecture walkthroughs. Use single-file upload for quick debugging or concept explanation.",
+    )
     
     # Upload method tabs
     tab1, tab2, tab3, tab4 = st.tabs([

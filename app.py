@@ -38,67 +38,28 @@ def setup_page_config():
     # Load custom CSS
     from ui.design_system import load_design_system
     load_design_system()
-    
-    # Add custom CSS for sidebar toggle functionality
-    st.markdown("""
-    <style>
-    /* Make sure the default Streamlit collapse button is always visible and functional */
-    [data-testid="collapsedControl"] {
-        display: flex !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        position: fixed !important;
-        top: 0.5rem !important;
-        left: 0.5rem !important;
-        z-index: 999999 !important;
-        background: white !important;
-        border: 1px solid #E5E5E5 !important;
-        border-radius: 6px !important;
-        padding: 8px 12px !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
-        cursor: pointer !important;
-    }
-    
-    [data-testid="collapsedControl"]:hover {
-        background: #F9F9F9 !important;
-        border-color: #0066CC !important;
-    }
-    
-    /* Style the hamburger icon */
-    [data-testid="collapsedControl"] svg {
-        color: #1A1A1A !important;
-        width: 20px !important;
-        height: 20px !important;
-    }
-    
-    /* Ensure sidebar close button is visible */
-    [data-testid="stSidebar"] button[kind="header"] {
-        display: flex !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        background: white !important;
-        border: 1px solid #E5E5E5 !important;
-        border-radius: 6px !important;
-        padding: 8px !important;
-        margin: 8px !important;
-    }
-    
-    [data-testid="stSidebar"] button[kind="header"]:hover {
-        background: #F9F9F9 !important;
-        border-color: #0066CC !important;
-    }
-    
-    /* Make sure sidebar can be interacted with */
-    [data-testid="stSidebar"] {
-        z-index: 999998 !important;
-    }
-    
-    /* Ensure main content doesn't overlap with toggle button */
-    .main .block-container {
-        padding-left: 3rem !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # Keep sidebar toggle clearly visible across custom themes.
+    st.markdown(
+        """
+        <style>
+        [data-testid="collapsedControl"] {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 999999 !important;
+            border-radius: 9px !important;
+            border: 1px solid #b9cccd !important;
+            background: rgba(255,255,255,0.95) !important;
+            box-shadow: 0 4px 12px rgba(15, 37, 55, 0.12) !important;
+        }
+        [data-testid="collapsedControl"]:hover {
+            border-color: #0f766e !important;
+            background: #ffffff !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def initialize_session_state():
@@ -241,103 +202,98 @@ def route_to_page(page: str):
     from ui.progress_dashboard import render_progress_dashboard
     
     if page == "Home":
-        from ui.design_system import section_header, spacing, info_box
-        
-        # Hero section - minimal and clean
-        st.markdown("# CodeGuru India")
-        st.markdown('<p style="color: #666666; font-size: 17px; margin-top: -8px; margin-bottom: 32px;">Learn code faster with AI-powered explanations</p>', unsafe_allow_html=True)
-        
-        spacing("lg")
-        
-        # Features grid - simple cards
-        section_header("Features")
-        
+        from ui.design_system import (
+            info_box,
+            render_feature_card,
+            render_hero,
+            render_soft_panel,
+            render_stats,
+            section_header,
+            spacing,
+        )
+
+        render_hero(
+            "CodeGuru India",
+            "AI-powered code learning for real repositories. Understand complex codebases in your native language, ask by voice, and master through guided practice.",
+            pills=[
+                "Repository + Local File Analysis",
+                "English • हिंदी • తెలుగు",
+                "Voice to Code Chat",
+                "Intent-driven Quizzes & Flashcards",
+            ],
+        )
+
+        section_header(
+            "What You Can Demo",
+            "A minimal workflow designed for judges: upload -> explain -> ask -> practice -> track",
+        )
+
         col1, col2, col3 = st.columns(3)
-        
         with col1:
-            st.markdown("""
-            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px; margin-bottom: 16px;">
-                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Smart Code Analysis</h3>
-                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Upload files or GitHub repos for instant AI-powered analysis with detailed insights</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px;">
-                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Interactive Learning</h3>
-                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Flashcards, quizzes, and structured learning paths tailored to your goals</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
+            render_feature_card(
+                "Deep Code Understanding",
+                "Analyze full repositories or single files and surface the architecture, key modules, and core behavior quickly.",
+                chip="Analysis",
+            )
+            spacing("sm")
+            render_feature_card(
+                "Learning Materials That Teach",
+                "Generate challenging flashcards and quizzes from actual conversation intent and repository evidence.",
+                chip="Learning",
+            )
         with col2:
-            st.markdown("""
-            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px; margin-bottom: 16px;">
-                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Voice Queries</h3>
-                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Ask questions in English, Hindi, or Telugu and get instant answers</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px;">
-                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Progress Tracking</h3>
-                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Monitor your growth with detailed analytics and achievement badges</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
+            render_feature_card(
+                "Codebase Chat That Stays Grounded",
+                "Ask any technical question and get answers tied to retrieved snippets, not generic textbook guesses.",
+                chip="Chat",
+            )
+            spacing("sm")
+            render_feature_card(
+                "Voice-Native Interaction",
+                "Speak in your preferred language, translate into query input, and continue the same chat context smoothly.",
+                chip="Voice",
+            )
         with col3:
-            st.markdown("""
-            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px; margin-bottom: 16px;">
-                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Simple Analogies</h3>
-                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Complex concepts explained with culturally relevant Indian examples</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div style="background: white; border: 1px solid #E5E5E5; border-radius: 6px; padding: 24px;">
-                <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 8px;">Visual Diagrams</h3>
-                <p style="font-size: 15px; color: #666666; line-height: 1.6; margin: 0;">Auto-generate flowcharts, class diagrams, and architecture visualizations</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        spacing("2xl")
-        
-        # Status section
-        section_header("Get Started")
-        
-        if st.session_state.get("backend_initialized", False):
-            info_box("AI Services Active - Full functionality enabled with AWS Bedrock", "success")
-        else:
-            info_box("Demo Mode - AI services not configured. Add AWS credentials to .env file for full functionality.", "warning")
-            info_box("You can still explore - All features work with mock data for demonstration purposes.", "info")
-        
+            render_feature_card(
+                "Guided Paths + Progress",
+                "Follow practical learning paths and track your coverage, confidence, and activity over time.",
+                chip="Progress",
+            )
+            spacing("sm")
+            render_feature_card(
+                "Hackathon-Ready UX",
+                "Clean, focused interface that highlights outcomes fast without clutter or demo-breaking complexity.",
+                chip="Presentation",
+            )
+
+        spacing("lg")
+        render_stats([
+            ("10+", "Code Languages"),
+            ("3", "UI Languages"),
+            ("5+", "Learning Surfaces"),
+            ("< 1 min", "First Insight Time"),
+        ])
+
         spacing("md")
-        
-        if st.button("Upload Code Now", type="primary"):
-            st.session_state.current_page = "Upload Code"
-            st.rerun()
-        
-        spacing("2xl")
-        
-        # Quick stats - minimal version
-        st.markdown("""
-        <div style="background: #F9F9F9; border: 1px solid #E5E5E5; border-radius: 6px; padding: 32px; text-align: center;">
-            <h3 style="font-size: 18px; font-weight: 600; color: #1A1A1A; margin-bottom: 24px;">Supported Technologies</h3>
-            <div style="display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;">
-                <div>
-                    <div style="font-size: 32px; font-weight: 600; color: #1A1A1A;">10+</div>
-                    <div style="font-size: 13px; color: #666666;">Languages</div>
-                </div>
-                <div>
-                    <div style="font-size: 32px; font-weight: 600; color: #1A1A1A;">5</div>
-                    <div style="font-size: 13px; color: #666666;">Learning Paths</div>
-                </div>
-                <div>
-                    <div style="font-size: 32px; font-weight: 600; color: #1A1A1A;">3</div>
-                    <div style="font-size: 13px; color: #666666;">Languages (UI)</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        if st.session_state.get("backend_initialized", False):
+            info_box("AI services connected. Full Bedrock-powered experience is active.", "success")
+        else:
+            info_box("Running in fallback mode. Configure AWS credentials in `.env` for full AI behavior.", "warning")
+
+        col_primary, col_secondary = st.columns([2, 1])
+        with col_primary:
+            if st.button("Start New Analysis", type="primary", use_container_width=True):
+                st.session_state.current_page = "Upload Code"
+                st.rerun()
+        with col_secondary:
+            if st.button("Open Codebase Chat", type="secondary", use_container_width=True):
+                st.session_state.current_page = "Codebase Chat"
+                st.rerun()
+
+        render_soft_panel(
+            "Judge Pitch Tip",
+            "Demo one repository in Hindi/Telugu voice mode, ask architecture + feature questions, then show generated quiz and progress in one continuous flow.",
+        )
     
     elif page == "Upload Code":
         # Use unified code analysis interface

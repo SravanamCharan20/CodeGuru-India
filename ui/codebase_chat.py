@@ -7,6 +7,7 @@ Provides ChatGPT-like interface for asking questions about the codebase.
 import streamlit as st
 import logging
 import time
+import html
 from typing import List, Dict, Any
 from ui.design_system import section_header, spacing
 from utils.performance_metrics import record_metric
@@ -711,21 +712,28 @@ def _render_message(message: Dict[str, Any]):
     """Render a chat message."""
     role = message['role']
     content = message['content']
+    safe_content = html.escape(content or "")
     
     if role == 'user':
-        st.markdown(f"""
-        <div style="background: #F0F8FF; border-left: 4px solid #0066CC; padding: 16px; margin: 8px 0; border-radius: 4px;">
-            <strong>You:</strong><br/>
-            {content}
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f"""
+                <div class="cg-chat-user">
+                    <div class="cg-chat-label">You</div>
+                    <div>{safe_content}</div>
+                </div>
+            """,
+            unsafe_allow_html=True,
+        )
     
     else:  # assistant
-        st.markdown(f"""
-        <div style="background: #F9F9F9; border-left: 4px solid #28A745; padding: 16px; margin: 8px 0; border-radius: 4px;">
-            <strong>🤖 Assistant:</strong>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="cg-chat-assistant">
+                <div class="cg-chat-label">CodeGuru Assistant</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         
         # Render explanation
         st.markdown(content)

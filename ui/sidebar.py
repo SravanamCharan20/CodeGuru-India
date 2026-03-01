@@ -1,109 +1,106 @@
 """Sidebar navigation component."""
+
 import streamlit as st
 
 
 def render_sidebar() -> str:
     """
     Render sidebar navigation and return selected page.
-    
+
     Returns:
         Selected page name
     """
     with st.sidebar:
-        # Logo and title
-        st.markdown("# 🎓 CodeGuru India")
-        st.markdown('<p style="color: #666666; font-size: 14px; margin-top: -16px;">AI-Powered Code Learning</p>', unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Language selector
-        st.markdown("### Language")
-        language = st.selectbox(
-            "Select Language",
-            options=["English", "हिंदी (Hindi)", "తెలుగు (Telugu)"],
-            label_visibility="collapsed"
+        st.markdown(
+            """
+            <div class="cg-sidebar-brand">
+                <div class="title">CodeGuru India</div>
+                <div class="sub">AI Code Learning Platform</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        
-        # Store language in session state
+
+        language_options = ["English", "हिंदी (Hindi)", "తెలుగు (Telugu)"]
         language_map = {
             "English": "english",
             "हिंदी (Hindi)": "hindi",
-            "తెలుగు (Telugu)": "telugu"
+            "తెలుగు (Telugu)": "telugu",
         }
-        st.session_state.selected_language = language_map.get(language, "english")
+        reverse_language_map = {value: key for key, value in language_map.items()}
+        current_lang_key = st.session_state.get("selected_language", "english")
+        default_label = reverse_language_map.get(current_lang_key, "English")
+
+        st.markdown('<div class="cg-nav-caption">Language</div>', unsafe_allow_html=True)
+        selected_language_label = st.selectbox(
+            "Language",
+            options=language_options,
+            index=language_options.index(default_label) if default_label in language_options else 0,
+            label_visibility="collapsed",
+            key="sidebar_language_selector",
+        )
+        st.session_state.selected_language = language_map.get(selected_language_label, "english")
         if "session_manager" in st.session_state:
             st.session_state.session_manager.set_language_preference(st.session_state.selected_language)
-        
-        st.markdown("---")
-        
-        # Navigation
-        st.markdown("### Navigation")
-        
-        # Get current page from session state
-        if "current_page" not in st.session_state:
-            st.session_state.current_page = "Home"
-        
-        current_page = st.session_state.current_page
-        
-        # Navigation buttons (demo-focused)
-        pages = [
-            ("Home", "🏠"),
-            ("Upload Code", "📤"),
-            ("Codebase Chat", "💬"),
-            ("Explanations", "🧾"),
-            ("Learning Paths", "🛤️"),
-            ("Learning Memory", "🧠"),
-            ("Progress", "📊")
-        ]
 
-        valid_pages = {name for name, _ in pages}
-        if current_page not in valid_pages:
-            current_page = "Home"
+        st.markdown('<div class="cg-nav-caption">Navigation</div>', unsafe_allow_html=True)
+        pages = [
+            "Home",
+            "Upload Code",
+            "Codebase Chat",
+            "Explanations",
+            "Learning Paths",
+            "Learning Memory",
+            "Progress",
+        ]
+        page_labels = {
+            "Home": "🏠 Home",
+            "Upload Code": "📤 Upload Code",
+            "Codebase Chat": "💬 Codebase Chat",
+            "Explanations": "🧾 Explanations",
+            "Learning Paths": "🛤️ Learning Paths",
+            "Learning Memory": "🧠 Learning Memory",
+            "Progress": "📊 Progress",
+        }
+
+        if "current_page" not in st.session_state or st.session_state.current_page not in pages:
             st.session_state.current_page = "Home"
-        
-        for page_name, icon in pages:
-            # Determine button type based on current page
-            button_type = "primary" if page_name == current_page else "secondary"
-            
-            # Create button
-            if st.button(
-                f"{icon} {page_name}",
-                key=f"nav_{page_name}",
-                type=button_type
-            ):
-                st.session_state.current_page = page_name
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Backend status
-        st.markdown("### Status")
-        
+
+        selected_page = st.radio(
+            "Pages",
+            options=pages,
+            index=pages.index(st.session_state.current_page),
+            format_func=lambda item: page_labels.get(item, item),
+            label_visibility="collapsed",
+            key="sidebar_page_selector",
+        )
+
+        if selected_page != st.session_state.current_page:
+            st.session_state.current_page = selected_page
+            st.rerun()
+
+        st.markdown('<div class="cg-nav-caption">System</div>', unsafe_allow_html=True)
+        memory_backend = st.session_state.get("memory_backend", "session")
         if st.session_state.get("backend_initialized", False):
-            st.success("✓ AI Connected")
-            memory_backend = st.session_state.get("memory_backend", "session")
-            st.caption(f"Memory: {memory_backend}")
+            st.success("AI connected")
+            st.caption(f"Memory backend: {memory_backend}")
         else:
             if st.session_state.get("backend_error"):
-                st.warning("⚠️ Using Mock Data")
-                with st.expander("Details"):
-                    st.caption(st.session_state.backend_error)
+                st.warning("Fallback mode active")
+                with st.expander("Initialization details"):
+                    st.code(st.session_state.backend_error)
             else:
-                st.info("⏳ Initializing...")
-        
-        st.markdown("---")
-        
-        # Help section
-        with st.expander("ℹ️ Help"):
-            st.markdown("""
-            **How to use:**
-            1. Upload repository or file
-            2. Review Starter Guide
-            3. Ask doubts in Codebase Chat
-            4. Review Explanations + Learning Paths
-            5. Track memory and progress
-            
-            **Tip:** Use the sidebar to close/open it
-            """)
-    
+                st.info("Initializing services...")
+
+        with st.expander("How to demo effectively"):
+            st.markdown(
+                """
+                1. Upload a repository and complete analysis.
+                2. Ask architecture + feature questions in Codebase Chat.
+                3. Switch language and show voice-to-query flow.
+                4. Open Learning Memory for quizzes/flashcards.
+                5. Show Progress dashboard.
+                """
+            )
+
     return st.session_state.current_page
